@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_CPAS_HW_INTF_H_
@@ -23,31 +23,12 @@
 /* Number of times to retry while polling */
 #define CAM_CPAS_POLL_QH_RETRY_CNT 50
 
-/* Number of CPAS hw caps registers */
-#define CAM_CPAS_MAX_CAPS_REGS 2
-
 /**
  * enum cam_cpas_hw_type - Enum for CPAS HW type
  */
 enum cam_cpas_hw_type {
 	CAM_HW_CPASTOP,
 	CAM_HW_CAMSSTOP,
-};
-
-/**
- * enum cam_cpas_reg_base - Enum for register base identifier. These
- *                          are the identifiers used in generic register
- *                          write/read APIs provided by cpas driver.
- */
-enum cam_cpas_reg_base {
-	CAM_CPAS_REG_CPASTOP,
-	CAM_CPAS_REG_CAMNOC,
-	CAM_CPAS_REG_CAMSS,
-	CAM_CPAS_REG_RPMH,
-	CAM_CPAS_REG_CESTA,
-	CAM_CPAS_REG_CAMNOC_RT,
-	CAM_CPAS_REG_CAMNOC_NRT,
-	CAM_CPAS_REG_MAX
 };
 
 /**
@@ -63,33 +44,8 @@ enum cam_cpas_hw_cmd_process {
 	CAM_CPAS_HW_CMD_LOG_VOTE,
 	CAM_CPAS_HW_CMD_SELECT_QOS,
 	CAM_CPAS_HW_CMD_LOG_EVENT,
-	CAM_CPAS_HW_CMD_GET_SCID,
-	CAM_CPAS_HW_CMD_ACTIVATE_LLC,
-	CAM_CPAS_HW_CMD_DEACTIVATE_LLC,
-	CAM_CPAS_HW_CMD_CONFIGURE_STALING_LLC,
-	CAM_CPAS_HW_CMD_NOTIF_STALL_INC_LLC,
 	CAM_CPAS_HW_CMD_DUMP_BUFF_FILL_INFO,
-	CAM_CPAS_HW_CMD_CSID_INPUT_CORE_INFO_UPDATE,
-	CAM_CPAS_HW_CMD_CSID_PROCESS_RESUME,
-	CAM_CPAS_HW_CMD_ENABLE_DISABLE_DOMAIN_ID_CLK,
-	CAM_CPAS_HW_CMD_TPG_MUX_SEL,
-	CAM_CPAS_HW_CMD_DUMP_STATE_MONITOR_INFO,
 	CAM_CPAS_HW_CMD_INVALID,
-};
-
-/**
- * struct cam_cpas_hw_cmd_csid_input_core_info_update : CPAS cmd struct for updating acquired
- *                                                      csid core info to cpas
- *
- * @csid_idx: CSID core index
- * @sfe_idx:  SFE core index corresponding to CSID core
- * @set_port: Indicates whether to set or reset port for given client
- *
- */
-struct cam_cpas_hw_cmd_csid_input_core_info_update {
-	int csid_idx;
-	int sfe_idx;
-	bool set_port;
 };
 
 /**
@@ -174,8 +130,7 @@ struct cam_cpas_hw_cmd_notify_event {
  * @camera_family: Camera family type
  * @camera_version: Camera version
  * @cpas_version: CPAS version
- * @camera_capability: array of camera hw capabilities
- * @num_capability_reg: Number of camera hw capabilities registers
+ * @camera_capability: Camera hw capabilities
  * @fuse_info: Fuse information
  *
  */
@@ -183,8 +138,7 @@ struct cam_cpas_hw_caps {
 	uint32_t camera_family;
 	struct cam_hw_version camera_version;
 	struct cam_hw_version cpas_version;
-	uint32_t camera_capability[CAM_CPAS_MAX_CAPS_REGS];
-	uint32_t num_capability_reg;
+	uint32_t camera_capability;
 	struct cam_cpas_fuse_info fuse_info;
 };
 
@@ -202,10 +156,4 @@ int cam_cpas_dev_init_module(void);
  * @brief : API to remove CPAS interface from platform framework.
  */
 void cam_cpas_dev_exit_module(void);
-
-/**
- * @brief : API to select TPG mux select.
- */
-int cam_cpas_enable_tpg_mux_sel(uint32_t tpg_mux_sel);
-
 #endif /* _CAM_CPAS_HW_INTF_H_ */

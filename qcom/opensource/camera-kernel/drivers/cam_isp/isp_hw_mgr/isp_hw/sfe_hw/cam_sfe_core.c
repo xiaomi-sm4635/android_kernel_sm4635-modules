@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/slab.h>
@@ -68,47 +67,43 @@ int cam_sfe_init_hw(void *hw_priv, void *init_hw_args, uint32_t arg_size)
 	if (rc) {
 		CAM_ERR(CAM_SFE, "Enable SOC failed");
 		rc = -EFAULT;
-		goto deinit_hw;
+		goto decrement_open_cnt;
 	}
 
 	CAM_DBG(CAM_SFE, "SFE SOC resource enabled");
 
-	if (core_info->sfe_top->hw_ops.init) {
-		rc = core_info->sfe_top->hw_ops.init(core_info->sfe_top->top_priv, NULL, 0);
-		if (rc) {
-			CAM_ERR(CAM_SFE, "Top init failed rc=%d", rc);
-			goto deinit_hw;
-		}
+	/* Async Reset as part of power ON */
+	/* Sync Reset in CSID */
+
+	/* INIT SFE BUS WR */
+	rc = core_info->sfe_bus_wr->hw_ops.init(
+		core_info->sfe_bus_wr->bus_priv, NULL, 0);
+	if (rc) {
+		CAM_ERR(CAM_SFE,
+			"SFE bus wr init failed rc: %d", rc);
+		goto disable_soc;
 	}
 
-	if (core_info->sfe_bus_wr->hw_ops.init) {
-		rc = core_info->sfe_bus_wr->hw_ops.init(core_info->sfe_bus_wr->bus_priv, NULL, 0);
-		if (rc) {
-			CAM_ERR(CAM_SFE, "Bus WR init failed rc=%d", rc);
-			goto deinit_hw;
-		}
+	/* INIT SFE BUS RD */
+	rc = core_info->sfe_bus_rd->hw_ops.init(
+		core_info->sfe_bus_rd->bus_priv, NULL, 0);
+	if (rc) {
+		CAM_ERR(CAM_SFE, "SFE bus rd init failed rc: %d", rc);
+		goto deinit_bus_wr;
 	}
-
-	if (core_info->sfe_bus_rd->hw_ops.init) {
-		rc = core_info->sfe_bus_rd->hw_ops.init(core_info->sfe_bus_rd->bus_priv, NULL, 0);
-		if (rc) {
-			CAM_ERR(CAM_SFE, "Bus RD init failed rc=%d", rc);
-			goto deinit_hw;
-		}
-	}
-
-	/*
-	 * Async Reset as part of power ON
-	 * Any register write in bus_wr_init/bus_rd_init
-	 * will be cleared by sync reset in CSID.
-	 *
-	 */
 
 	sfe_hw->hw_state = CAM_HW_STATE_POWER_UP;
 	return rc;
 
-deinit_hw:
-	cam_sfe_deinit_hw(hw_priv, NULL, 0);
+deinit_bus_wr:
+	core_info->sfe_bus_wr->hw_ops.deinit(
+		core_info->sfe_bus_wr->bus_priv, NULL, 0);
+disable_soc:
+	cam_sfe_disable_soc_resources(soc_info);
+decrement_open_cnt:
+	mutex_lock(&sfe_hw->hw_mutex);
+	sfe_hw->open_count--;
+	mutex_unlock(&sfe_hw->hw_mutex);
 	return rc;
 }
 
@@ -118,7 +113,6 @@ int cam_sfe_deinit_hw(void *hw_priv, void *deinit_hw_args, uint32_t arg_size)
 	struct cam_hw_soc_info            *soc_info = NULL;
 	struct cam_sfe_hw_core_info       *core_info = NULL;
 	int rc = 0;
-
 
 	if (!hw_priv) {
 		CAM_ERR(CAM_SFE, "Invalid arguments");
@@ -144,23 +138,17 @@ int cam_sfe_deinit_hw(void *hw_priv, void *deinit_hw_args, uint32_t arg_size)
 	soc_info = &sfe_hw->soc_info;
 	core_info = (struct cam_sfe_hw_core_info *)sfe_hw->core_info;
 
-	if (core_info->sfe_bus_rd->hw_ops.deinit) {
-		rc = core_info->sfe_bus_rd->hw_ops.deinit(core_info->sfe_bus_rd->bus_priv, NULL, 0);
-		if (rc)
-			CAM_ERR(CAM_SFE, "Bus RD deinit failed rc=%d", rc);
-	}
+	rc = core_info->sfe_bus_wr->hw_ops.deinit(
+		core_info->sfe_bus_wr->bus_priv, NULL, 0);
+	if (rc)
+		CAM_ERR(CAM_SFE, "SFE bus wr deinit failed rc: %d",
+			rc);
 
-	if (core_info->sfe_bus_wr->hw_ops.deinit) {
-		rc = core_info->sfe_bus_wr->hw_ops.deinit(core_info->sfe_bus_wr->bus_priv, NULL, 0);
-		if (rc)
-			CAM_ERR(CAM_SFE, "Bus WR deinit failed rc=%d", rc);
-	}
-
-	if (core_info->sfe_top->hw_ops.deinit) {
-		rc = core_info->sfe_top->hw_ops.deinit(core_info->sfe_top->top_priv, NULL, 0);
-		if (rc)
-			CAM_ERR(CAM_SFE, "Top deinit failed rc=%d", rc);
-	}
+	rc = core_info->sfe_bus_rd->hw_ops.deinit(
+		core_info->sfe_bus_rd->bus_priv, NULL, 0);
+	if (rc)
+		CAM_ERR(CAM_SFE, "SFE bus rd deinit failed rc: %d",
+			rc);
 
 	/* Turn OFF Regulators, Clocks and other SOC resources */
 	CAM_DBG(CAM_SFE, "Disable SFE SOC resource");
@@ -171,37 +159,6 @@ int cam_sfe_deinit_hw(void *hw_priv, void *deinit_hw_args, uint32_t arg_size)
 	sfe_hw->hw_state = CAM_HW_STATE_POWER_DOWN;
 
 	CAM_DBG(CAM_SFE, "SFE deinit done rc: %d", rc);
-	return rc;
-}
-
-int cam_sfe_test_irq_line(void *hw_priv)
-{
-	struct cam_hw_info *sfe_hw = hw_priv;
-	struct cam_sfe_hw_core_info *core_info;
-	int rc;
-
-	if (!hw_priv) {
-		CAM_ERR(CAM_SFE, "Invalid arguments");
-		return -EINVAL;
-	}
-
-	core_info = sfe_hw->core_info;
-
-	rc = cam_sfe_init_hw(sfe_hw, NULL, 0);
-	if (rc) {
-		CAM_ERR(CAM_SFE, "SFE:%d failed to init hw", sfe_hw->soc_info.index);
-		return rc;
-	}
-
-	rc = cam_irq_controller_test_irq_line(core_info->sfe_irq_controller, "SFE:%d",
-		sfe_hw->soc_info.index);
-	if (rc)
-		CAM_ERR(CAM_SFE, "failed to test SFE:%d", sfe_hw->soc_info.index);
-
-	rc = cam_sfe_deinit_hw(sfe_hw, NULL, 0);
-	if (rc)
-		CAM_ERR(CAM_SFE, "SFE:%d failed to deinit hw", sfe_hw->soc_info.index);
-
 	return rc;
 }
 
@@ -290,6 +247,7 @@ int cam_sfe_start(void *hw_priv, void *start_args, uint32_t arg_size)
 	struct cam_sfe_hw_core_info       *core_info = NULL;
 	struct cam_hw_info                *sfe_hw  = hw_priv;
 	struct cam_isp_resource_node      *sfe_res;
+	struct cam_hw_soc_info            *soc_info = NULL;
 	int                                rc;
 
 	if (!hw_priv || !start_args ||
@@ -298,6 +256,7 @@ int cam_sfe_start(void *hw_priv, void *start_args, uint32_t arg_size)
 		return -EINVAL;
 	}
 
+	soc_info = &sfe_hw->soc_info;
 	core_info = (struct cam_sfe_hw_core_info *)sfe_hw->core_info;
 	sfe_res = (struct cam_isp_resource_node  *)start_args;
 	core_info->tasklet_info = sfe_res->tasklet_info;
@@ -377,6 +336,7 @@ int cam_sfe_process_cmd(void *hw_priv, uint32_t cmd_type,
 	struct cam_hw_info                *sfe_hw = hw_priv;
 	struct cam_hw_soc_info            *soc_info = NULL;
 	struct cam_sfe_hw_core_info       *core_info = NULL;
+	struct cam_sfe_hw_info            *hw_info = NULL;
 	int rc = 0;
 
 	if (!hw_priv) {
@@ -386,6 +346,7 @@ int cam_sfe_process_cmd(void *hw_priv, uint32_t cmd_type,
 
 	soc_info = &sfe_hw->soc_info;
 	core_info = (struct cam_sfe_hw_core_info *)sfe_hw->core_info;
+	hw_info = core_info->sfe_hw_info;
 
 	switch (cmd_type) {
 	case CAM_ISP_HW_CMD_GET_CHANGE_BASE:
@@ -393,76 +354,28 @@ int cam_sfe_process_cmd(void *hw_priv, uint32_t cmd_type,
 	case CAM_ISP_HW_CMD_BW_UPDATE_V2:
 	case CAM_ISP_HW_CMD_BW_CONTROL:
 	case CAM_ISP_HW_CMD_CORE_CONFIG:
-	case CAM_ISP_HW_NOTIFY_OVERFLOW:
-	case CAM_ISP_HW_CMD_APPLY_CLK_BW_UPDATE:
-	case CAM_ISP_HW_CMD_FCG_CONFIG:
 		rc = core_info->sfe_top->hw_ops.process_cmd(
 			core_info->sfe_top->top_priv, cmd_type,
 			cmd_args, arg_size);
 		break;
 	case CAM_ISP_HW_CMD_GET_BUF_UPDATE:
-	case CAM_ISP_HW_CMD_BUF_UPDATE:
 	case CAM_ISP_HW_CMD_GET_HFR_UPDATE:
 	case CAM_ISP_HW_CMD_STRIPE_UPDATE:
 	case CAM_ISP_HW_CMD_WM_CONFIG_UPDATE:
-	case CAM_ISP_HW_CMD_GET_WM_SECURE_MODE:
-	case CAM_ISP_HW_SFE_SYS_CACHE_WM_CONFIG:
-	case CAM_ISP_HW_CMD_WM_BW_LIMIT_CONFIG:
-	case CAM_ISP_HW_SFE_BUS_MINI_DUMP:
-	case CAM_ISP_HW_USER_DUMP:
-	case CAM_ISP_HW_CMD_GET_LAST_CONSUMED_ADDR:
+	case CAM_ISP_HW_CMD_GET_SECURE_MODE:
 		rc = core_info->sfe_bus_wr->hw_ops.process_cmd(
 			core_info->sfe_bus_wr->bus_priv, cmd_type,
 			cmd_args, arg_size);
 		break;
 	case CAM_ISP_HW_CMD_GET_HFR_UPDATE_RM:
 	case CAM_ISP_HW_CMD_GET_BUF_UPDATE_RM:
-	case CAM_ISP_HW_CMD_BUF_UPDATE_RM:
 	case CAM_ISP_HW_CMD_FE_UPDATE_BUS_RD:
-	case CAM_ISP_HW_SFE_SYS_CACHE_RM_CONFIG:
-	case CAM_ISP_HW_CMD_RM_ENABLE_DISABLE:
-	case CAM_ISP_HW_CMD_GET_RM_SECURE_MODE:
 		rc = core_info->sfe_bus_rd->hw_ops.process_cmd(
 			core_info->sfe_bus_rd->bus_priv, cmd_type,
 			cmd_args, arg_size);
 		break;
 	case  CAM_ISP_HW_CMD_UNMASK_BUS_WR_IRQ:
-		/* Not supported */
-		break;
-	case CAM_ISP_HW_CMD_SET_SFE_DEBUG_CFG:
-		/* propagate to SFE top */
-		core_info->sfe_top->hw_ops.process_cmd(
-			core_info->sfe_top->top_priv, cmd_type,
-			cmd_args, arg_size);
-		fallthrough;
-	case CAM_ISP_HW_CMD_GET_RES_FOR_MID:
-	case CAM_ISP_HW_CMD_DUMP_BUS_INFO:
-	case CAM_ISP_HW_CMD_IRQ_INJECTION:
-	case CAM_ISP_HW_CMD_DUMP_IRQ_DESCRIPTION:
-		/* propagate to SFE bus wr */
-		core_info->sfe_bus_wr->hw_ops.process_cmd(
-			core_info->sfe_bus_wr->bus_priv, cmd_type,
-			cmd_args, arg_size);
-
-		/* propagate to SFE bus rd */
-		core_info->sfe_bus_rd->hw_ops.process_cmd(
-			core_info->sfe_bus_rd->bus_priv, cmd_type,
-			cmd_args, arg_size);
-		break;
-	case CAM_ISP_HW_CMD_QUERY_CAP:
-		/* propagate to SFE top */
-		core_info->sfe_top->hw_ops.process_cmd(
-			core_info->sfe_top->top_priv, cmd_type,
-			cmd_args, arg_size);
-
-		/* propagate to SFE bus wr */
-		core_info->sfe_bus_wr->hw_ops.process_cmd(
-			core_info->sfe_bus_wr->bus_priv, cmd_type,
-			cmd_args, arg_size);
-		break;
-	case CAM_ISP_HW_CMD_QUERY_REGSPACE_DATA:
-		*((struct cam_hw_soc_info **)cmd_args) = soc_info;
-		rc = 0;
+		/* Needs to be handled based on hw_mgr change */
 		break;
 	default:
 		CAM_ERR(CAM_SFE, "Invalid cmd type: %d", cmd_type);
@@ -485,7 +398,7 @@ irqreturn_t cam_sfe_irq(int irq_num, void *data)
 	core_info = (struct cam_sfe_hw_core_info *)sfe_hw->core_info;
 
 	return cam_irq_controller_handle_irq(irq_num,
-		core_info->sfe_irq_controller, CAM_IRQ_EVT_GROUP_0);
+		core_info->sfe_irq_controller);
 }
 
 int cam_sfe_core_init(
@@ -498,7 +411,8 @@ int cam_sfe_core_init(
 
 	rc = cam_irq_controller_init(drv_name,
 		CAM_SOC_GET_REG_MAP_START(soc_info, SFE_CORE_BASE_IDX),
-		sfe_hw_info->irq_reg_info, &core_info->sfe_irq_controller);
+		sfe_hw_info->irq_reg_info, &core_info->sfe_irq_controller,
+		true);
 	if (rc) {
 		CAM_ERR(CAM_SFE, "SFE irq controller init failed");
 		return rc;
@@ -536,8 +450,9 @@ int cam_sfe_core_init(
 	return rc;
 
 deinit_bus_wr:
-	cam_sfe_bus_deinit(sfe_hw_info->bus_wr_version,
-		BUS_TYPE_SFE_WR, &core_info->sfe_bus_wr);
+	cam_sfe_bus_deinit(BUS_TYPE_SFE_WR,
+		sfe_hw_info->bus_wr_version,
+		&core_info->sfe_bus_wr);
 deinit_top:
 	cam_sfe_top_deinit(sfe_hw_info->top_version,
 		&core_info->sfe_top);
@@ -558,14 +473,16 @@ int cam_sfe_core_deinit(
 
 	spin_lock_irqsave(&core_info->spin_lock, flags);
 
-	rc = cam_sfe_bus_deinit(sfe_hw_info->bus_rd_version,
-		BUS_TYPE_SFE_RD, &core_info->sfe_bus_rd);
+	rc = cam_sfe_bus_deinit(BUS_TYPE_SFE_RD,
+		sfe_hw_info->bus_rd_version,
+		&core_info->sfe_bus_rd);
 	if (rc)
 		CAM_ERR(CAM_SFE,
 			"SFE bus rd deinit failed rc: %d", rc);
 
-	rc = cam_sfe_bus_deinit(sfe_hw_info->bus_wr_version,
-			BUS_TYPE_SFE_WR, &core_info->sfe_bus_wr);
+	rc = cam_sfe_bus_deinit(BUS_TYPE_SFE_WR,
+			sfe_hw_info->bus_wr_version,
+			&core_info->sfe_bus_wr);
 	if (rc)
 		CAM_ERR(CAM_SFE,
 			"SFE bus wr deinit failed rc: %d", rc);

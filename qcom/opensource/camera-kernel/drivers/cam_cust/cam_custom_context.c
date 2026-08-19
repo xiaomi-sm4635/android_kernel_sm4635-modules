@@ -468,7 +468,7 @@ static int __cam_custom_ctx_flush_req(struct cam_context *ctx,
 	if (list_empty(req_list)) {
 		CAM_DBG(CAM_CUSTOM, "request list is empty");
 		if (flush_req->type == CAM_REQ_MGR_FLUSH_TYPE_CANCEL_REQ) {
-			CAM_INFO(CAM_CUSTOM, "no request to cancel (req:%lld)", flush_req->req_id);
+			CAM_ERR(CAM_CUSTOM, "no request to cancel");
 			return -EINVAL;
 		} else {
 			return 0;
@@ -1151,7 +1151,9 @@ static int __cam_custom_ctx_config_dev(struct cam_context *ctx,
 	int rc = 0, i;
 	struct cam_ctx_request           *req = NULL;
 	struct cam_custom_dev_ctx_req    *req_custom;
+	uintptr_t                         packet_addr;
 	struct cam_packet                *packet;
+	size_t                            len = 0;
 	struct cam_hw_prepare_update_args cfg;
 	struct cam_req_mgr_add_request    add_req;
 	struct cam_custom_context        *ctx_custom =
@@ -1173,11 +1175,25 @@ static int __cam_custom_ctx_config_dev(struct cam_context *ctx,
 
 	req_custom = (struct cam_custom_dev_ctx_req *) req->req_priv;
 
-	cam_context_parse_config_cmd(ctx, cmd, &packet);
-	if (IS_ERR(packet)) {
-		rc = PTR_ERR(packet);
+	/* for config dev, only memory handle is supported */
+	/* map packet from the memhandle */
+	rc = cam_mem_get_cpu_buf((int32_t) cmd->packet_handle,
+		&packet_addr, &len);
+	if (rc != 0) {
+		CAM_ERR(CAM_CUSTOM, "Can not get packet address");
+		rc = -EINVAL;
 		goto free_req;
 	}
+
+	packet = (struct cam_packet *)(packet_addr + (uint32_t)cmd->offset);
+	CAM_DBG(CAM_CUSTOM, "pack_handle %llx", cmd->packet_handle);
+	CAM_DBG(CAM_CUSTOM, "packet address is 0x%zx", packet_addr);
+	CAM_DBG(CAM_CUSTOM, "packet with length %zu, offset 0x%llx",
+		len, cmd->offset);
+	CAM_DBG(CAM_CUSTOM, "Packet request id %lld",
+		packet->header.request_id);
+	CAM_DBG(CAM_CUSTOM, "Packet size 0x%x", packet->header.size);
+	CAM_DBG(CAM_CUSTOM, "packet op %d", packet->header.op_code);
 
 	if ((((packet->header.op_code) & 0xF) ==
 		CAM_CUSTOM_PACKET_UPDATE_DEV)
@@ -1588,6 +1604,19 @@ static int __cam_custom_ctx_apply_default_req(
 	return rc;
 }
 
+static int __cam_custom_ctx_shutdown_dev(
+	struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
+{
+	int rc = -EINVAL;
+
+	if (!sd || !fh) {
+		CAM_ERR(CAM_CUSTOM, "Invalid input pointer");
+		return rc;
+	}
+
+	return cam_custom_subdev_close_internal(sd, fh);
+}
+
 /* top state machine */
 static struct cam_ctx_ops
 	cam_custom_dev_ctx_top_state_machine[CAM_CTX_STATE_MAX] = {
@@ -1602,6 +1631,7 @@ static struct cam_ctx_ops
 		.ioctl_ops = {
 			.acquire_dev =
 				__cam_custom_ctx_acquire_dev_in_available,
+			.shutdown_dev = __cam_custom_ctx_shutdown_dev,
 		},
 		.crm_ops = {},
 		.irq_ops = NULL,
@@ -1613,6 +1643,7 @@ static struct cam_ctx_ops
 			.release_dev = __cam_custom_release_dev_in_acquired,
 			.config_dev = __cam_custom_ctx_config_dev_in_acquired,
 			.release_hw = __cam_custom_ctx_release_hw_in_top_state,
+			.shutdown_dev = __cam_custom_ctx_shutdown_dev,
 		},
 		.crm_ops = {
 			.link = __cam_custom_ctx_link_in_acquired,
@@ -1631,6 +1662,7 @@ static struct cam_ctx_ops
 			.release_dev = __cam_custom_release_dev_in_acquired,
 			.config_dev = __cam_custom_ctx_config_dev,
 			.release_hw = __cam_custom_ctx_release_hw_in_top_state,
+			.shutdown_dev = __cam_custom_ctx_shutdown_dev,
 		},
 		.crm_ops = {
 			.unlink = __cam_custom_ctx_unlink_in_ready,
@@ -1648,6 +1680,7 @@ static struct cam_ctx_ops
 			.config_dev = __cam_custom_ctx_config_dev_in_flushed,
 			.release_hw =
 				__cam_custom_ctx_release_hw_in_activated_state,
+			.shutdown_dev = __cam_custom_ctx_shutdown_dev,
 		},
 		.crm_ops = {
 			.unlink = __cam_custom_ctx_unlink_in_ready,
@@ -1664,6 +1697,7 @@ static struct cam_ctx_ops
 			.config_dev = __cam_custom_ctx_config_dev,
 			.release_hw =
 				__cam_custom_ctx_release_hw_in_activated_state,
+			.shutdown_dev = __cam_custom_ctx_shutdown_dev,
 		},
 		.crm_ops = {
 			.unlink = __cam_custom_ctx_unlink_in_activated,
@@ -1682,7 +1716,7 @@ int cam_custom_dev_context_init(struct cam_custom_context *ctx,
 	struct cam_context *ctx_base,
 	struct cam_req_mgr_kmd_ops *crm_node_intf,
 	struct cam_hw_mgr_intf *hw_intf,
-	uint32_t ctx_id, int img_iommu_hdl)
+	uint32_t ctx_id)
 {
 	int rc = -1, i = 0;
 
@@ -1706,15 +1740,12 @@ int cam_custom_dev_context_init(struct cam_custom_context *ctx,
 
 	/* camera context setup */
 	rc = cam_context_init(ctx_base, custom_dev_name, CAM_CUSTOM, ctx_id,
-		crm_node_intf, hw_intf, ctx->req_base, CAM_CTX_REQ_MAX, img_iommu_hdl);
+		crm_node_intf, hw_intf, ctx->req_base, CAM_CTX_REQ_MAX);
 	if (rc) {
 		CAM_ERR(CAM_CUSTOM, "Camera Context Base init failed");
 		return rc;
 	}
 
-	ctx_base->max_hw_update_entries = CAM_CTX_CFG_MAX;
-	ctx_base->max_in_map_entries = CAM_CTX_CFG_MAX;
-	ctx_base->max_out_map_entries = CAM_CTX_CFG_MAX;
 	/* link camera context with custom HW context */
 	ctx_base->state_machine = cam_custom_dev_ctx_top_state_machine;
 	ctx_base->ctx_priv = ctx;

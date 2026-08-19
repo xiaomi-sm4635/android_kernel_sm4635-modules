@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 
@@ -16,6 +16,7 @@
 #include <dt-bindings/msm-camera.h>
 
 static  struct cam_isp_hw_intf_data cam_vfe_hw_list[CAM_VFE_HW_NUM_MAX];
+static char vfe_dev_name[8];
 static uint32_t g_num_ife_hws, g_num_ife_lite_hws;
 
 static int cam_vfe_component_bind(struct device *dev,
@@ -57,9 +58,13 @@ static int cam_vfe_component_bind(struct device *dev,
 		goto free_vfe_hw_intf;
 	}
 
+	memset(vfe_dev_name, 0, sizeof(vfe_dev_name));
+	snprintf(vfe_dev_name, sizeof(vfe_dev_name),
+		"vfe%1u", vfe_hw_intf->hw_idx);
+
 	vfe_hw->soc_info.pdev = pdev;
 	vfe_hw->soc_info.dev = &pdev->dev;
-	vfe_hw->soc_info.dev_name = pdev->name;
+	vfe_hw->soc_info.dev_name = vfe_dev_name;
 	vfe_hw_intf->hw_priv = vfe_hw;
 	vfe_hw_intf->hw_idx = vfe_dev_idx;
 	vfe_hw_intf->hw_ops.get_hw_caps = cam_vfe_get_hw_caps;
@@ -73,7 +78,6 @@ static int cam_vfe_component_bind(struct device *dev,
 	vfe_hw_intf->hw_ops.read = cam_vfe_read;
 	vfe_hw_intf->hw_ops.write = cam_vfe_write;
 	vfe_hw_intf->hw_ops.process_cmd = cam_vfe_process_cmd;
-	vfe_hw_intf->hw_ops.test_irq_line = cam_vfe_test_irq_line;
 	vfe_hw_intf->hw_type = CAM_ISP_HW_TYPE_VFE;
 
 	CAM_DBG(CAM_ISP, "VFE component bind, type %d index %d",
@@ -110,6 +114,8 @@ static int cam_vfe_component_bind(struct device *dev,
 	rc = cam_vfe_core_init(core_info, &vfe_hw->soc_info,
 		vfe_hw_intf, hw_info);
 	if (rc < 0) {
+		if (rc == -ENXIO)
+			rc = 0;
 		CAM_ERR(CAM_ISP, "Failed to init core rc=%d", rc);
 		goto deinit_soc;
 	}
@@ -127,6 +133,9 @@ static int cam_vfe_component_bind(struct device *dev,
 	for (i = 0; i < vfe_soc_priv->num_pid; i++)
 		cam_vfe_hw_list[vfe_hw_intf->hw_idx].hw_pid[i] =
 			vfe_soc_priv->pid[i];
+
+	cam_vfe_init_hw(vfe_hw, NULL, 0);
+	cam_vfe_deinit_hw(vfe_hw, NULL, 0);
 
 	CAM_DBG(CAM_ISP, "VFE:%d component bound successfully",
 		vfe_hw_intf->hw_idx);

@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2017-2019, 2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ *  Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
  */
 
 #ifndef _HFI_DEFS_H_
@@ -22,7 +21,6 @@
 #define HFI_DOMAIN_BASE_IPE_BPS         (0x1 << HFI_DOMAIN_SHFT)
 #define HFI_DOMAIN_BASE_CDM             (0x2 << HFI_DOMAIN_SHFT)
 #define HFI_DOMAIN_BASE_DBG             (0x3 << HFI_DOMAIN_SHFT)
-#define HFI_DOMAIN_BASE_OFE             (0x4 << HFI_DOMAIN_SHFT)
 
 /* Command base offset for commands */
 #define HFI_CMD_START_OFFSET            0x10000
@@ -45,14 +43,12 @@
 #define HFI_EVENT_IPE_BPS_ERROR         (HFI_COMMON_BASE + 0x3)
 #define HFI_EVENT_CDM_ERROR             (HFI_COMMON_BASE + 0x4)
 #define HFI_EVENT_DBG_ERROR             (HFI_COMMON_BASE + 0x5)
-#define HFI_EVENT_OFE_ERROR             (HFI_COMMON_BASE + 0x6)
 
 /* Core level start Ranges for errors */
-#define HFI_ERR_ICP_START               (HFI_COMMON_BASE       + 0x64)
-#define HFI_ERR_IPE_BPS_START           (HFI_ERR_ICP_START     + 0x64)
+#define HFI_ERR_ICP_START               (HFI_COMMON_BASE + 0x64)
+#define HFI_ERR_IPE_BPS_START           (HFI_ERR_ICP_START + 0x64)
 #define HFI_ERR_CDM_START               (HFI_ERR_IPE_BPS_START + 0x64)
-#define HFI_ERR_DBG_START               (HFI_ERR_CDM_START     + 0x64)
-#define HFI_ERR_OFE_START               (HFI_ERR_DBG_START     + 0x64)
+#define HFI_ERR_DBG_START               (HFI_ERR_CDM_START + 0x64)
 
 /*ICP Core level  error messages */
 #define HFI_ERR_NO_RES                  (HFI_ERR_ICP_START + 0x1)
@@ -103,15 +99,6 @@
 #define HFI_CMD_IPEBPS_ASYNC_COMMAND_INDIRECT \
 		(HFI_CMD_IPE_BPS_COMMON_START + 0xe)
 
-/* Core level commands */
-/* OFE core Commands */
-#define HFI_CMD_OFE_COMMON_START \
-		(HFI_DOMAIN_BASE_OFE + HFI_CMD_START_OFFSET + 0x0)
-#define HFI_CMD_OFE_CREATE_HANDLE \
-		(HFI_CMD_OFE_COMMON_START + 0x08)
-#define HFI_CMD_OFE_ASYNC_COMMAND \
-		(HFI_CMD_OFE_COMMON_START + 0x0e)
-
 /* CDM core Commands */
 #define HFI_CMD_CDM_COMMON_START \
 		(HFI_DOMAIN_BASE_CDM + HFI_CMD_START_OFFSET + 0x0)
@@ -122,7 +109,6 @@
 #define HFI_CMD_DBG_COMMON_START \
 		(HFI_DOMAIN_BASE_DBG + HFI_CMD_START_OFFSET + 0x0)
 #define HFI_CMD_DBG_TEST_START  (HFI_CMD_DBG_COMMON_START + 0x800)
-#define HFI_CMD_DBG_SYNX_TEST   (HFI_CMD_DBG_TEST_START + 0x1)
 #define HFI_CMD_DBG_END         (HFI_CMD_DBG_COMMON_START + 0xFFF)
 
 /* System level messages */
@@ -147,23 +133,10 @@
 		(HFI_MSG_IPE_BPS_COMMON_START + 0x0a)
 #define HFI_MSG_IPEBPS_ASYNC_COMMAND_INDIRECT_ACK \
 		(HFI_MSG_IPE_BPS_COMMON_START + 0x0e)
-#define HFI_MSG_IPE_BPS_TEST_START \
+#define HFI_MSG_IPE_BPS_TEST_START	\
 		(HFI_MSG_IPE_BPS_COMMON_START + 0x800)
 #define HFI_MSG_IPE_BPS_END \
 		(HFI_MSG_IPE_BPS_COMMON_START + 0xFFF)
-
-/* Core level Messages */
-/* OFE core Messages */
-#define HFI_MSG_OFE_COMMON_START \
-		(HFI_DOMAIN_BASE_OFE + HFI_MSG_START_OFFSET + 0x0)
-#define HFI_MSG_OFE_CREATE_HANDLE_ACK \
-		(HFI_MSG_OFE_COMMON_START + 0X08)
-#define HFI_MSG_OFE_ASYNC_COMMAND_ACK \
-		(HFI_MSG_OFE_COMMON_START + 0x0e)
-#define HFI_MSG_OFE_TEST_START \
-		(HFI_MSG_OFE_COMMON_START + 0x0800)
-#define HFI_MSG_OFE_END \
-		(HFI_MSG_OFE_COMMON_START + 0x0FFF)
 
 /* CDM core Messages */
 #define HFI_MSG_CDM_COMMON_START \
@@ -183,37 +156,26 @@
 		(HFI_CMD_IPE_BPS_COMMON_START + 0x800)
 #define HFI_CMD_IPE_BPS_END (HFI_CMD_IPE_BPS_COMMON_START + 0xFFF)
 
-/* OFE core level test command range */
-#define HFI_CMD_OFE_TEST_START         (HFI_CMD_OFE_COMMON_START + 0x0800)
-#define HFI_CMD_OFE_END                (HFI_CMD_OFE_COMMON_START + 0x0FFF)
-
 /* ICP core level test message range */
 #define HFI_MSG_ICP_TEST_START  (HFI_MSG_ICP_COMMON_START + 0x800)
 #define HFI_MSG_ICP_END         (HFI_MSG_ICP_COMMON_START + 0xFFF)
 
 /* ICP core level Debug test message range */
 #define HFI_MSG_DBG_COMMON_START \
-		(HFI_DOMAIN_BASE_DBG + HFI_MSG_START_OFFSET + 0x0)
-
+		(HFI_DOMAIN_BASE_DBG + 0x0)
 #define HFI_MSG_DBG_TEST_START  (HFI_MSG_DBG_COMMON_START + 0x800)
-#define HFI_MSG_DBG_SYNX_TEST   (HFI_MSG_DBG_TEST_START + 0x1)
 #define HFI_MSG_DBG_END         (HFI_MSG_DBG_COMMON_START + 0xFFF)
 
 /* System  level property base offset */
 #define HFI_PROPERTY_ICP_COMMON_START  (HFI_DOMAIN_BASE_ICP + 0x0)
 
-#define HFI_PROP_SYS_DEBUG_CFG             (HFI_PROPERTY_ICP_COMMON_START + 0x1)
-#define HFI_PROP_SYS_UBWC_CFG              (HFI_PROPERTY_ICP_COMMON_START + 0x2)
-#define HFI_PROP_SYS_IMAGE_VER             (HFI_PROPERTY_ICP_COMMON_START + 0x3)
-#define HFI_PROP_SYS_SUPPORTED             (HFI_PROPERTY_ICP_COMMON_START + 0x4)
-#define HFI_PROP_SYS_IPEBPS_PC             (HFI_PROPERTY_ICP_COMMON_START + 0x5)
-#define HFI_PROP_SYS_FW_DUMP_CFG           (HFI_PROPERTY_ICP_COMMON_START + 0x8)
-#define HFI_PROP_SYS_UBWC_CONFIG_EX        (HFI_PROPERTY_ICP_COMMON_START + 0x9)
-#define HFI_PROP_SYS_ICP_HW_FREQUENCY      (HFI_PROPERTY_ICP_COMMON_START + 0xa)
-#define HFI_PROP_SYS_ICP_RAMDUMP_MODE      (HFI_PROPERTY_ICP_COMMON_START + 0xb)
-#define HFI_PROP_SYS_OFE_PC                (HFI_PROPERTY_ICP_COMMON_START + 0xc)
-#define HFI_PROP_SYS_MEM_REGIONS           (HFI_PROPERTY_ICP_COMMON_START + 0xe)
-#define HFI_PROP_SYS_ICP_FEATURE_SUPPORTED (HFI_PROPERTY_ICP_COMMON_START + 0xf)
+#define HFI_PROP_SYS_DEBUG_CFG           (HFI_PROPERTY_ICP_COMMON_START + 0x1)
+#define HFI_PROP_SYS_UBWC_CFG            (HFI_PROPERTY_ICP_COMMON_START + 0x2)
+#define HFI_PROP_SYS_IMAGE_VER           (HFI_PROPERTY_ICP_COMMON_START + 0x3)
+#define HFI_PROP_SYS_SUPPORTED           (HFI_PROPERTY_ICP_COMMON_START + 0x4)
+#define HFI_PROP_SYS_IPEBPS_PC           (HFI_PROPERTY_ICP_COMMON_START + 0x5)
+#define HFI_PROP_SYS_FW_DUMP_CFG         (HFI_PROPERTY_ICP_COMMON_START + 0x8)
+#define HFI_PROPERTY_SYS_UBWC_CONFIG_EX  (HFI_PROPERTY_ICP_COMMON_START + 0x9)
 
 /* Capabilities reported at sys init */
 #define HFI_CAPS_PLACEHOLDER_1         (HFI_COMMON_BASE + 0x1)
@@ -246,13 +208,6 @@
 /* Number of available dump levels. */
 #define NUM_HFI_DUMP_LVL        0x00000003
 
-/* Number of available ramdump levels. */
-#define HFI_FW_RAMDUMP_DISABLED 0x00000000
-#define HFI_FW_RAMDUMP_ENABLED  0x00000001
-
-/* Number of available ramdump levels. */
-#define NUM_HFI_RAMDUMP_LVLS    0x00000002
-
 /* Debug Msg Communication types:
  * Section describes different modes (HFI_DEBUG_MODE_X)
  * available to communicate the debug messages
@@ -273,23 +228,7 @@
 #define HFI_DEBUG_CFG_WFI        0x01000000
 #define HFI_DEBUG_CFG_ARM9WD     0x10000000
 
-#define HFI_DEV_VERSION_MAX      0x4
-
-#define ICP_PWR_CLP_BPS          0x00000001
-#define ICP_PWR_CLP_IPE0         0x00010000
-#define ICP_PWR_CLP_IPE1         0x00020000
-#define ICP_PWR_CLP_OFE          0x00000001
-
-/* New mem region definitions */
-#define HFI_MEM_REGION_ID_IPCLITE_SHARED_MEM      0
-#define HFI_MEM_REGION_ID_SYNX_HW_MUTEX           1
-#define HFI_MEM_REGION_ID_GLOBAL_ATOMIC_HW_MUTEX  2
-#define HFI_MEM_REGION_ID_GLOBAL_CNTR             3
-
-/* Type of the new regions */
-#define HFI_MEM_REGION_TYPE_CACHED       0
-#define HFI_MEM_REGION_TYPE_UNCACHED     1
-#define HFI_MEM_REGION_TYPE_DEVICE       2
+#define HFI_DEV_VERSION_MAX      0x5
 
 /**
  * start of sys command packet types
@@ -328,7 +267,7 @@ struct hfi_caps_support_info {
  * payload structure to configure HFI_PROPERTY_SYS_DEBUG_CONFIG
  * @debug_config: it is a result of HFI_DEBUG_MSG_X values that
  *                are OR-ed together to specify the debug message types
- *                to output
+ *                to otput
  * @debug_mode: debug message output through debug queue/qdss
  * @HFI_PROPERTY_SYS_DEBUG_CONFIG
  */
@@ -338,12 +277,12 @@ struct hfi_debug {
 } __packed;
 
 /**
- * struct hfi_dev_pc
- * payload structure to configure HFI_PROPERTY_SYS_DEV_PC
+ * struct hfi_ipe_bps_pc
+ * payload structure to configure HFI_PROPERTY_SYS_IPEBPS_PC
  * @enable: Flag to enable IPE, BPS interfrane power collapse
  * @core_info: Core information to firmware
  */
-struct hfi_dev_pc {
+struct hfi_ipe_bps_pc {
 	uint32_t enable;
 	uint32_t core_info;
 } __packed;
@@ -364,12 +303,10 @@ struct hfi_cmd_ubwc_cfg {
  * Payload structure to configure HFI_UBWC_CFG_TYPE_EXT
  * @bps: UBWC configuration for bps
  * @ipe: UBWC configuration for ipe
- * @ofe: UBWC configuration for ofe
  */
 struct hfi_cmd_ubwc_cfg_ext {
 	struct hfi_cmd_ubwc_cfg bps;
 	struct hfi_cmd_ubwc_cfg ipe;
-	struct hfi_cmd_ubwc_cfg ofe;
 } __packed;
 
 /**
@@ -440,36 +377,11 @@ struct hfi_cmd_ping_pkt {
  *             as part of HFI_MSG_SYS_RESET_ACK
  * @HFI_CMD_SYS_RESET
  */
+
 struct hfi_cmd_sys_reset_pkt {
 	uint32_t size;
 	uint32_t pkt_type;
 	uint64_t user_data;
-} __packed;
-
-/**
- * struct hfi_cmd_mem_region_info
- * Payload structure to configure HFI_PROP_SYS_MEM_REGIONS
- * @region_id: region id (HW mutex/synx global mem/...)
- * @region_type: Type of the region (cached/uncached/device/..)
- * @start_addr: va to the start of this region
- * @size: size of this region
- */
-struct hfi_cmd_mem_region_info {
-	uint32_t region_id;
-	uint32_t region_type;
-	uint64_t start_addr;
-	uint32_t size;
-} __packed;
-
-/**
- * struct hfi_cmd_mem_region_info
- * Payload structure to configure HFI_PROP_SYS_MEM_REGIONS
- * @num_valid_regions: Valid number of regions configured to FW
- * @region_info: Region specific info
- */
-struct hfi_cmd_config_mem_regions {
-	uint32_t num_valid_regions;
-	struct hfi_cmd_mem_region_info region_info[1];
 } __packed;
 
 /* end of sys command packet types */
@@ -479,20 +391,9 @@ struct hfi_cmd_config_mem_regions {
 /**
  * struct hfi_prop
  * structure to report maximum supported features of firmware.
- * @api_ver:    Firmware API version
- * @dev_ver:    Device version
- * @num_icp_hw: Number of ICP hardware information
- * @dev_hw_ver: Supported hardware version information
- * @force_ipe_8bpp: flag to indicate if 8bpp ipe fuse is blown
- * @reserved:   Reserved field
  */
 struct hfi_sys_support {
-	uint32_t api_ver;
-	uint32_t dev_ver;
-	uint32_t num_icp_hw;
-	uint32_t dev_hw_ver[HFI_DEV_VERSION_MAX];
-	uint32_t force_ipe_8bpp;
-	uint32_t reserved;
+	uint32_t place_holder;
 } __packed;
 
 /**
@@ -653,28 +554,8 @@ struct hfi_msg_event_notify {
 	uint32_t event_data2;
 	uint32_t ext_event_data[1];
 } __packed;
-
-/** The Camera ICP FW Features structure definition
- * is_feature_mask_enabled  : Overall platform feature enable bit
- * feature_mask             : ICP FW feature mask
- * feature_mask_validity    : feature mask validity
- * is_4K_enabled            : 4K30 feature enable bit
- * _4K_feature_validity     : 4K feature validity
- * is_sHDR_enabled          : sHDR feature enable bit
- * sHDR_feature_validity    : sHDR feature validity
- * max_fps_4K_supported     : 4kFPS feature data
- */
-struct hfi_sys_camera_icp_fw_features {
-	uint32_t is_feature_mask_enabled;
-	uint32_t feature_mask;
-	uint32_t feature_mask_validity;
-	uint32_t is_4K_enabled;
-	uint32_t _4K_feature_validity;
-	uint32_t is_sHDR_enabled;
-	uint32_t sHDR_feature_validity;
-	uint32_t max_fps_4K_supported;
-} __packed;
 /**
  * end of sys message packet types
  */
+
 #endif /* _HFI_DEFS_H_ */

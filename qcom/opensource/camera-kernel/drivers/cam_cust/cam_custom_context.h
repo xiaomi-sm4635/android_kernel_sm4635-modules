@@ -6,7 +6,7 @@
 #ifndef _CAM_CUSTOM_CONTEXT_H_
 #define _CAM_CUSTOM_CONTEXT_H_
 
-#include <linux/spinlock_types.h>
+#include <linux/spinlock.h>
 
 #include <media/cam_custom.h>
 #include <media/cam_defs.h>
@@ -132,14 +132,13 @@ struct cam_custom_context {
  * @bridge_ops:         Bridge call back funciton
  * @hw_intf:            Cust hw manager interface
  * @ctx_id:             ID for this context
- * @img_iommu_hdl:      IOMMU HDL for Image buffers
  *
  */
 int cam_custom_dev_context_init(struct cam_custom_context *ctx,
 	struct cam_context *ctx_base,
 	struct cam_req_mgr_kmd_ops *bridge_ops,
 	struct cam_hw_mgr_intf *hw_intf,
-	uint32_t ctx_id, int img_iommu_hdl);
+	uint32_t ctx_id);
 
 /**
  * cam_custom_dev_context_deinit()
@@ -150,5 +149,17 @@ int cam_custom_dev_context_init(struct cam_custom_context *ctx,
  *
  */
 int cam_custom_dev_context_deinit(struct cam_custom_context *ctx);
+
+/**
+ * cam_custom_subdev_close_internal()
+ *
+ * @brief:               Close function for the Custom context
+ *
+ * @sd:                  Pointer to struct v4l2_subdev
+ * @fh:                  Pointer to struct v4l2_subdev_fh
+ *
+ */
+int cam_custom_subdev_close_internal(struct v4l2_subdev *sd,
+	struct v4l2_subdev_fh *fh);
 
 #endif  /* _CAM_CUSTOM_CONTEXT_H_ */

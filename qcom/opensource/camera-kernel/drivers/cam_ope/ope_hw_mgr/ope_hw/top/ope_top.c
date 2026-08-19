@@ -26,7 +26,6 @@
 #include "ope_hw.h"
 #include "ope_dev_intf.h"
 #include "ope_top.h"
-#include "cam_common_util.h"
 
 static struct ope_top ope_top_info;
 
@@ -102,7 +101,7 @@ static int cam_ope_top_reset(struct ope_hw *ope_hw_info,
 	cam_io_w_mb(top_reg_val->sw_reset_cmd,
 		ope_hw_info->top_reg->base + top_reg->reset_cmd);
 
-	rc = cam_common_wait_for_completion_timeout(
+	rc = wait_for_completion_timeout(
 			&ope_top_info.reset_complete,
 			msecs_to_jiffies(60));
 
@@ -207,7 +206,7 @@ static int cam_ope_top_init(struct ope_hw *ope_hw_info,
 	cam_io_w_mb(top_reg_val->sw_reset_cmd,
 		ope_hw_info->top_reg->base + top_reg->reset_cmd);
 
-	rc = cam_common_wait_for_completion_timeout(
+	rc = wait_for_completion_timeout(
 			&ope_top_info.reset_complete,
 			msecs_to_jiffies(60));
 

@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
  */
 
 #ifndef _CAM_VFE_LITE48x_H_
@@ -33,9 +32,8 @@ static struct cam_irq_register_set vfe48x_top_irq_reg_set[3] = {
 static struct cam_irq_controller_reg_info vfe48x_top_irq_reg_info = {
 	.num_registers = 3,
 	.irq_reg_set = vfe48x_top_irq_reg_set,
-	.global_irq_cmd_offset = 0x00000024,
-	.global_clear_bitmask  = 0x00000001,
-	.clear_all_bitmask     = 0xFFFFFFFF,
+	.global_clear_offset  = 0x00000024,
+	.global_clear_bitmask = 0x00000001,
 };
 
 static struct cam_vfe_top_ver3_reg_offset_common vfe48x_top_common_reg = {
@@ -223,13 +221,6 @@ static struct cam_irq_register_set vfe48x_bus_irq_reg[2] = {
 	},
 };
 
-static uint32_t vfe48x_out_port_mid[][4] = {
-	{16, 0, 0, 0},
-	{17, 0, 0, 0},
-	{18, 0, 0, 0},
-	{19, 0, 0, 0},
-};
-
 static struct cam_vfe_bus_ver3_hw_info vfe48x_bus_hw_info = {
 	.common_reg = {
 		.hw_version                       = 0x00001A00,
@@ -252,7 +243,7 @@ static struct cam_vfe_bus_ver3_hw_info vfe48x_bus_hw_info = {
 		.irq_reg_info = {
 			.num_registers            = 2,
 			.irq_reg_set              = vfe48x_bus_irq_reg,
-			.global_irq_cmd_offset    = 0x00001A30,
+			.global_clear_offset      = 0x00001A30,
 			.global_clear_bitmask     = 0x00000001,
 		},
 	},
@@ -382,14 +373,10 @@ static struct cam_vfe_bus_ver3_hw_info vfe48x_bus_hw_info = {
 			.max_width     = -1,
 			.max_height    = -1,
 			.source_group  = CAM_VFE_BUS_VER3_SRC_GRP_0,
-			.mid           = vfe48x_out_port_mid[0],
-			.num_mid       = 1,
+			.mid[0]        = 16,
 			.num_wm        = 1,
 			.wm_idx        = {
 				0,
-			},
-			.name          = {
-				"LITE_0",
 			},
 		},
 		{
@@ -397,14 +384,10 @@ static struct cam_vfe_bus_ver3_hw_info vfe48x_bus_hw_info = {
 			.max_width     = -1,
 			.max_height    = -1,
 			.source_group  = CAM_VFE_BUS_VER3_SRC_GRP_1,
-			.mid           = vfe48x_out_port_mid[1],
-			.num_mid       = 1,
+			.mid[0]        = 17,
 			.num_wm        = 1,
 			.wm_idx        = {
 				1,
-			},
-			.name          = {
-				"LITE_1",
 			},
 		},
 		{
@@ -412,14 +395,10 @@ static struct cam_vfe_bus_ver3_hw_info vfe48x_bus_hw_info = {
 			.max_width     = -1,
 			.max_height    = -1,
 			.source_group  = CAM_VFE_BUS_VER3_SRC_GRP_2,
-			.mid           = vfe48x_out_port_mid[2],
-			.num_mid       = 1,
+			.mid[0]        = 18,
 			.num_wm        = 1,
 			.wm_idx        = {
 				2,
-			},
-			.name          = {
-				"LITE_2",
 			},
 		},
 		{
@@ -427,21 +406,15 @@ static struct cam_vfe_bus_ver3_hw_info vfe48x_bus_hw_info = {
 			.max_width     = -1,
 			.max_height    = -1,
 			.source_group  = CAM_VFE_BUS_VER3_SRC_GRP_3,
-			.mid           = vfe48x_out_port_mid[3],
-			.num_mid       = 1,
+			.mid[0]        = 19,
 			.num_wm        = 1,
 			.wm_idx        = {
 				3,
 			},
-			.name          = {
-				"LITE_3",
-			},
 		},
 	},
 	.num_comp_grp    = 4,
-	.comp_done_mask = {
-		BIT(4), BIT(5), BIT(6), BIT(7),
-	},
+	.comp_done_shift = 4,
 	.top_irq_shift   = 4,
 	.support_consumed_addr = true,
 	.max_out_res = CAM_ISP_IFE_OUT_RES_BASE + 25,
@@ -449,14 +422,8 @@ static struct cam_vfe_bus_ver3_hw_info vfe48x_bus_hw_info = {
 	.comp_cfg_needed = true,
 };
 
-static struct cam_vfe_irq_hw_info vfe48x_irq_hw_info = {
-	.reset_mask    = BIT(17),
-	.supported_irq = CAM_VFE_HW_IRQ_CAP_LITE_INT_CSID,
-	.top_irq_reg       = &vfe48x_top_irq_reg_info,
-};
-
 static struct cam_vfe_hw_info cam_vfe_lite48x_hw_info = {
-	.irq_hw_info                  = &vfe48x_irq_hw_info,
+	.irq_reg_info                  = &vfe48x_top_irq_reg_info,
 
 	.bus_version                   = CAM_VFE_BUS_VER_3_0,
 	.bus_hw_info                   = &vfe48x_bus_hw_info,

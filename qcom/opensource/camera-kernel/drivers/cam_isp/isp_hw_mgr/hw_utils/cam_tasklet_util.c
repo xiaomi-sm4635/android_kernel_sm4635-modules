@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2017-2019, 2021 The Linux Foundation. All rights reserved.
  */
 
 #include <linux/slab.h>
-#include <linux/spinlock_types.h>
+#include <linux/spinlock.h>
 #include <linux/interrupt.h>
 #include <linux/list.h>
 #include <linux/ratelimit.h>
@@ -21,7 +20,7 @@
 /* Threshold for execution delay in ms */
 #define CAM_TASKLET_EXE_TIME_THRESHOLD          10
 
-#define CAM_TASKLETQ_SIZE                          256
+#define CAM_TASKLETQ_SIZE                          512
 
 static void cam_tasklet_action(unsigned long data);
 
@@ -334,25 +333,24 @@ static void cam_tasklet_action(unsigned long data)
 {
 	struct cam_tasklet_info          *tasklet_info = NULL;
 	struct cam_tasklet_queue_cmd     *tasklet_cmd = NULL;
-	ktime_t                           tasklet_exec_start_time;
-	void                             *cb = NULL;
+	ktime_t                           curr_time;
+
 	tasklet_info = (struct cam_tasklet_info *)data;
 
 	while (!cam_tasklet_dequeue_cmd(tasklet_info, &tasklet_cmd)) {
-		cb = (void *)tasklet_cmd->bottom_half_handler;
 		cam_common_util_thread_switch_delay_detect(
-			"ISP Tasklet", "schedule", cb,
+			"Tasklet schedule",
 			tasklet_cmd->tasklet_enqueue_ts,
 			CAM_TASKLET_SCHED_TIME_THRESHOLD);
-		tasklet_exec_start_time = ktime_get();
+		curr_time = ktime_get();
 
 		tasklet_cmd->bottom_half_handler(tasklet_cmd->handler_priv,
 			tasklet_cmd->payload);
 
 		cam_common_util_thread_switch_delay_detect(
-			"ISP Tasklet", "execution", cb,
-			tasklet_exec_start_time,
-			CAM_TASKLET_SCHED_TIME_THRESHOLD);
+			"Tasklet execution",
+			curr_time,
+			CAM_TASKLET_EXE_TIME_THRESHOLD);
 		cam_tasklet_put_cmd(tasklet_info, (void **)(&tasklet_cmd));
 	}
 }

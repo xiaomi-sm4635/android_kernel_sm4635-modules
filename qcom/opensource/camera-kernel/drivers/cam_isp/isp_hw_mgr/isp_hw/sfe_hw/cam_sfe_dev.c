@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/slab.h>
@@ -13,13 +13,12 @@
 #include "cam_sfe_core.h"
 #include "cam_sfe_soc.h"
 #include "cam_sfe680.h"
-#include "cam_sfe780.h"
-#include "cam_sfe860.h"
-#include "cam_sfe880.h"
 #include "cam_debug_util.h"
 #include "camera_main.h"
 
-static struct cam_isp_hw_intf_data cam_sfe_hw_list[CAM_SFE_HW_NUM_MAX];
+static struct cam_hw_intf *cam_sfe_hw_list[CAM_SFE_HW_NUM_MAX];
+
+static char sfe_dev_name[8];
 static uint32_t g_num_sfe_hws;
 
 static int cam_sfe_component_bind(struct device *dev,
@@ -32,9 +31,8 @@ static int cam_sfe_component_bind(struct device *dev,
 	struct cam_sfe_hw_core_info       *core_info = NULL;
 	struct cam_sfe_hw_info            *hw_info = NULL;
 	struct platform_device            *pdev = NULL;
-	struct cam_sfe_soc_private        *soc_priv;
+	int                                rc = 0;
 	uint32_t                           sfe_dev_idx;
-	int                                i, rc = 0;
 
 	pdev = to_platform_device(dev);
 
@@ -61,9 +59,13 @@ static int cam_sfe_component_bind(struct device *dev,
 		goto free_sfe_hw_intf;
 	}
 
+	memset(sfe_dev_name, 0, sizeof(sfe_dev_name));
+	snprintf(sfe_dev_name, sizeof(sfe_dev_name),
+		"sfe%1u", sfe_hw_intf->hw_idx);
+
 	sfe_info->soc_info.pdev = pdev;
 	sfe_info->soc_info.dev = &pdev->dev;
-	sfe_info->soc_info.dev_name = pdev->name;
+	sfe_info->soc_info.dev_name = sfe_dev_name;
 	sfe_hw_intf->hw_priv = sfe_info;
 	sfe_hw_intf->hw_idx = sfe_dev_idx;
 	sfe_hw_intf->hw_ops.get_hw_caps = cam_sfe_get_hw_caps;
@@ -77,7 +79,6 @@ static int cam_sfe_component_bind(struct device *dev,
 	sfe_hw_intf->hw_ops.read = cam_sfe_read;
 	sfe_hw_intf->hw_ops.write = cam_sfe_write;
 	sfe_hw_intf->hw_ops.process_cmd = cam_sfe_process_cmd;
-	sfe_hw_intf->hw_ops.test_irq_line = cam_sfe_test_irq_line;
 	sfe_hw_intf->hw_type = CAM_ISP_HW_TYPE_SFE;
 
 	CAM_DBG(CAM_SFE, "SFE component bind type %d index %d",
@@ -124,13 +125,7 @@ static int cam_sfe_component_bind(struct device *dev,
 	init_completion(&sfe_info->hw_complete);
 
 	if (sfe_hw_intf->hw_idx < CAM_SFE_HW_NUM_MAX)
-		cam_sfe_hw_list[sfe_hw_intf->hw_idx].hw_intf = sfe_hw_intf;
-
-	soc_priv = sfe_info->soc_info.soc_private;
-	cam_sfe_hw_list[sfe_hw_intf->hw_idx].num_hw_pid = soc_priv->num_pid;
-	for (i = 0; i < soc_priv->num_pid; i++)
-		cam_sfe_hw_list[sfe_hw_intf->hw_idx].hw_pid[i] =
-			soc_priv->pid[i];
+		cam_sfe_hw_list[sfe_hw_intf->hw_idx] = sfe_hw_intf;
 
 	CAM_DBG(CAM_SFE, "SFE%d bound successfully",
 		sfe_hw_intf->hw_idx);
@@ -171,17 +166,19 @@ static void cam_sfe_component_unbind(struct device *dev,
 		sfe_hw_intf->hw_type, sfe_hw_intf->hw_idx);
 
 	if (sfe_hw_intf->hw_idx < CAM_SFE_HW_NUM_MAX)
-		cam_sfe_hw_list[sfe_hw_intf->hw_idx].hw_intf = NULL;
+		cam_sfe_hw_list[sfe_hw_intf->hw_idx] = NULL;
 
 	sfe_info = sfe_hw_intf->hw_priv;
 	if (!sfe_info) {
 		CAM_ERR(CAM_SFE, "HW data is NULL");
+		rc = -ENODEV;
 		goto free_sfe_hw_intf;
 	}
 
 	core_info = (struct cam_sfe_hw_core_info *)sfe_info->core_info;
 	if (!core_info) {
 		CAM_ERR(CAM_SFE, "core data NULL");
+		rc = -EINVAL;
 		goto deinit_soc;
 	}
 
@@ -238,12 +235,12 @@ int cam_sfe_remove(struct platform_device *pdev)
 	return 0;
 }
 
-int cam_sfe_hw_init(struct cam_isp_hw_intf_data **sfe_hw, uint32_t hw_idx)
+int cam_sfe_hw_init(struct cam_hw_intf **sfe_hw, uint32_t hw_idx)
 {
 	int rc = 0;
 
-	if (cam_sfe_hw_list[hw_idx].hw_intf) {
-		*sfe_hw = &cam_sfe_hw_list[hw_idx];
+	if (cam_sfe_hw_list[hw_idx]) {
+		*sfe_hw = cam_sfe_hw_list[hw_idx];
 		rc = 0;
 	} else {
 		*sfe_hw = NULL;
@@ -255,20 +252,8 @@ int cam_sfe_hw_init(struct cam_isp_hw_intf_data **sfe_hw, uint32_t hw_idx)
 
 static const struct of_device_id cam_sfe_dt_match[] = {
 	{
-		.compatible = "qcom,sfe680",
+		.compatible = "",
 		.data = &cam_sfe680_hw_info,
-	},
-	{
-		.compatible = "qcom,sfe780",
-		.data = &cam_sfe780_hw_info,
-	},
-	{
-		.compatible = "qcom,sfe860",
-		.data = &cam_sfe860_hw_info,
-	},
-	{
-		.compatible = "qcom,sfe880",
-		.data = &cam_sfe880_hw_info,
 	},
 	{}
 };

@@ -31,16 +31,22 @@ struct cam_ope_context {
  * @ctx:     Pointer to context
  * @hw_intf: Pointer to OPE hardware interface
  * @ctx_id:  ID for this context
- * @img_iommu_hdl: IOMMU HDL for image buffers
- *
  */
 int cam_ope_context_init(struct cam_ope_context *ctx,
-	struct cam_hw_mgr_intf *hw_intf, uint32_t ctx_id, int img_iommu_hdl);
+	struct cam_hw_mgr_intf *hw_intf, uint32_t ctx_id);
 
 /**
  * cam_ope_context_deinit() - OPE context deinit
  * @ctx: Pointer to context
  */
 int cam_ope_context_deinit(struct cam_ope_context *ctx);
+
+/**
+ * cam_ope_subdev_close_internal() - Close function for the icp dev
+ * @sd: Pointer to struct v4l2_subdev
+ * @fh: Pointer to struct v4l2_subdev_fh
+ */
+int cam_ope_subdev_close_internal(struct v4l2_subdev *sd,
+	struct v4l2_subdev_fh *fh);
 
 #endif /* _CAM_OPE_CONTEXT_H_ */

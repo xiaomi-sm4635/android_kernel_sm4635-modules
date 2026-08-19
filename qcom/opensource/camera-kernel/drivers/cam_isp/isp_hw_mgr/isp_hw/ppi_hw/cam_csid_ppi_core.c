@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/iopoll.h>
@@ -13,7 +12,6 @@
 #include "cam_soc_util.h"
 #include "cam_debug_util.h"
 #include "cam_io_util.h"
-#include "cam_common_util.h"
 
 static int cam_csid_ppi_reset(struct cam_csid_ppi_hw *ppi_hw)
 {
@@ -36,10 +34,9 @@ static int cam_csid_ppi_reset(struct cam_csid_ppi_hw *ppi_hw)
 	cam_io_w_mb(PPI_IRQ_CMD_SET, soc_info->reg_map[0].mem_base +
 		ppi_reg->ppi_irq_cmd_addr);
 
-	rc = cam_common_read_poll_timeout(soc_info->reg_map[0].mem_base +
-		ppi_reg->ppi_irq_status_addr,
-		1000, 500000, 0x1, 0x1, &status);
-
+	rc = readl_poll_timeout(soc_info->reg_map[0].mem_base +
+		ppi_reg->ppi_irq_status_addr, status,
+		(status & 0x1) == 0x1, 1000, 500000);
 	CAM_DBG(CAM_ISP, "PPI:%d reset status %d", ppi_hw->hw_intf->hw_idx,
 		status);
 	if (rc < 0) {
@@ -77,7 +74,8 @@ static int cam_csid_ppi_enable_hw(struct cam_csid_ppi_hw  *ppi_hw)
 	}
 
 	for (i = 0; i < soc_info->num_clk; i++) {
-		rc = cam_soc_util_clk_enable(soc_info, CAM_CLK_SW_CLIENT_IDX, false, i, -1);
+		rc = cam_soc_util_clk_enable(soc_info->clk[i],
+			soc_info->clk_name[i], 0, NULL);
 		if (rc)
 			goto clk_disable;
 	}
@@ -107,7 +105,8 @@ static int cam_csid_ppi_enable_hw(struct cam_csid_ppi_hw  *ppi_hw)
 	return 0;
 clk_disable:
 	for (--i; i >= 0; i--)
-		cam_soc_util_clk_disable(soc_info, CAM_CLK_SW_CLIENT_IDX, false, i);
+		cam_soc_util_clk_disable(soc_info->clk[i],
+			soc_info->clk_name[i]);
 	ppi_hw->hw_info->open_count--;
 	return rc;
 }
@@ -153,7 +152,8 @@ static int cam_csid_ppi_disable_hw(struct cam_csid_ppi_hw *ppi_hw)
 	ppi_hw->device_enabled = 0;
 
 	for (i = 0; i < soc_info->num_clk; i++)
-		cam_soc_util_clk_disable(soc_info, CAM_CLK_SW_CLIENT_IDX, false, i);
+		cam_soc_util_clk_disable(soc_info->clk[i],
+			soc_info->clk_name[i]);
 
 	return rc;
 }
@@ -276,10 +276,9 @@ err:
 }
 
 int cam_csid_ppi_init_soc_resources(struct cam_hw_soc_info *soc_info,
-	irq_handler_t ppi_irq_handler, void *data)
+	irq_handler_t ppi_irq_handler, void *irq_data)
 {
-	int rc = 0, i;
-	void *irq_data[CAM_SOC_MAX_IRQ_LINES_PER_DEV] = {0};
+	int rc = 0;
 
 	rc = cam_soc_util_get_dt_properties(soc_info);
 	if (rc) {
@@ -287,10 +286,8 @@ int cam_csid_ppi_init_soc_resources(struct cam_hw_soc_info *soc_info,
 		goto end;
 	}
 
-	for (i = 0; i < soc_info->irq_count; i++)
-		irq_data[i] = data;
-
-	rc = cam_soc_util_request_platform_resource(soc_info, ppi_irq_handler, &(irq_data[0]));
+	rc = cam_soc_util_request_platform_resource(soc_info, ppi_irq_handler,
+		irq_data);
 	if (rc) {
 		CAM_ERR(CAM_ISP,
 			"PPI: Error Request platform resources failed rc=%d",

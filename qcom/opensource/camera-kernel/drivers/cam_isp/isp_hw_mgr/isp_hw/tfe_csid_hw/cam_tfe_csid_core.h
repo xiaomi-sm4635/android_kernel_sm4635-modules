@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_TFE_CSID_HW_H_
@@ -53,17 +52,12 @@
 #define TFE_CSID_PATH_INFO_INPUT_EOL                  BIT(10)
 #define TFE_CSID_PATH_INFO_INPUT_SOL                  BIT(11)
 #define TFE_CSID_PATH_INFO_INPUT_SOF                  BIT(12)
-#define TFE_CSID_PATH_ERROR_PIX_COUNT                 BIT(13)
-#define TFE_CSID_PATH_ERROR_LINE_COUNT                BIT(14)
 #define TFE_CSID_PATH_IPP_ERROR_CCIF_VIOLATION        BIT(15)
-#define TFE_CSID_PATH_IPP_FRAME_DROP                  BIT(16)
-#define TFE_CSID_PATH_IPP_OVERFLOW_IRQ                BIT(17)
-#define TFE_CSID_PATH_PPP_ERROR_CCIF_VIOLATION        BIT(15)
-#define TFE_CSID_PATH_PPP_FRAME_DROP                  BIT(16)
-#define TFE_CSID_PATH_PPP_OVERFLOW_IRQ                BIT(17)
-#define TFE_CSID_PATH_RDI_ERROR_CCIF_VIOLATION        BIT(15)
+#define TFE_CSID_PATH_IPP_OVERFLOW_IRQ                BIT(16)
+#define TFE_CSID_PATH_IPP_FRAME_DROP                  BIT(17)
 #define TFE_CSID_PATH_RDI_FRAME_DROP                  BIT(16)
 #define TFE_CSID_PATH_RDI_OVERFLOW_IRQ                BIT(17)
+#define TFE_CSID_PATH_RDI_ERROR_CCIF_VIOLATION        BIT(18)
 
 /*
  * Debug values enable the corresponding interrupts and debug logs provide
@@ -82,28 +76,12 @@
 
 #define CAM_CSID_EVT_PAYLOAD_MAX                  10
 
-/* Binning supported masks. Binning support changes for specific paths
- * and also for targets. With the mask, we handle the supported features
- * in reg files and handle in code accordingly.
- */
-
-#define CAM_TFE_CSID_BIN_BAYER                        BIT(0)
-#define CAM_TFE_CSID_BIN_QCFA                         BIT(1)
-
 /* enum cam_csid_path_halt_mode select the path halt mode control */
 enum cam_tfe_csid_path_halt_mode {
 	TFE_CSID_HALT_MODE_INTERNAL,
 	TFE_CSID_HALT_MODE_GLOBAL,
 	TFE_CSID_HALT_MODE_MASTER,
 	TFE_CSID_HALT_MODE_SLAVE,
-};
-
-/* enum cam_csid_path_halt_master select the path halt master control */
-enum cam_tfe_csid_path_halt_master_sel {
-	TFE_CSID_HALT_CMD_SOURCE_EXTERNAL,
-	TFE_CSID_HALT_CMD_SOURCE_NONE,
-	TFE_CSID_HALT_CMD_SOURCE_INTERNAL2,
-	TFE_CSID_HALT_CMD_SOURCE_INTERNAL1,
 };
 
 /**
@@ -127,20 +105,11 @@ struct cam_tfe_csid_pxl_reg_offset {
 	uint32_t csid_pxl_cfg0_addr;
 	uint32_t csid_pxl_cfg1_addr;
 	uint32_t csid_pxl_ctrl_addr;
-	uint32_t csid_pxl_frame_drop_pattern;
-	uint32_t csid_pxl_frame_drop_period;
-	uint32_t csid_pxl_irq_subsample_pattern;
-	uint32_t csid_pxl_irq_subsample_period;
 	uint32_t csid_pxl_hcrop_addr;
 	uint32_t csid_pxl_vcrop_addr;
 	uint32_t csid_pxl_rst_strobes_addr;
 	uint32_t csid_pxl_status_addr;
 	uint32_t csid_pxl_misr_val_addr;
-	uint32_t csid_pxl_format_measure_cfg0_addr;
-	uint32_t csid_pxl_format_measure_cfg1_addr;
-	uint32_t csid_pxl_format_measure0_addr;
-	uint32_t csid_pxl_format_measure1_addr;
-	uint32_t csid_pxl_format_measure2_addr;
 	uint32_t csid_pxl_timestamp_curr0_sof_addr;
 	uint32_t csid_pxl_timestamp_curr1_sof_addr;
 	uint32_t csid_pxl_timestamp_perv0_sof_addr;
@@ -149,28 +118,17 @@ struct cam_tfe_csid_pxl_reg_offset {
 	uint32_t csid_pxl_timestamp_curr1_eof_addr;
 	uint32_t csid_pxl_timestamp_perv0_eof_addr;
 	uint32_t csid_pxl_timestamp_perv1_eof_addr;
-	uint32_t csid_pxl_ppp_sparse_pd_ext_cfg0;
 	uint32_t csid_pxl_err_recovery_cfg0_addr;
 	uint32_t csid_pxl_err_recovery_cfg1_addr;
 	uint32_t csid_pxl_err_recovery_cfg2_addr;
-	uint32_t csid_pxl_multi_vcdt_cfg0_addr;
 
 	/* configuration */
 	uint32_t pix_store_en_shift_val;
 	uint32_t early_eof_en_shift_val;
 	uint32_t halt_master_sel_shift;
 	uint32_t halt_mode_shift;
-	uint32_t halt_mode_mask;
-	uint32_t halt_cmd_shift;
 	uint32_t halt_master_sel_master_val;
 	uint32_t halt_master_sel_slave_val;
-	uint32_t binning_supported;
-	uint32_t bin_qcfa_en_shift_val;
-	uint32_t bin_en_shift_val;
-	uint32_t format_measure_en_shift_val;
-	uint32_t measure_en_hbi_vbi_cnt_val;
-	bool     is_multi_vc_dt_supported;
-	uint32_t cgc_mode_en_shift_val;
 };
 
 struct cam_tfe_csid_rdi_reg_offset {
@@ -183,21 +141,10 @@ struct cam_tfe_csid_rdi_reg_offset {
 	uint32_t csid_rdi_cfg0_addr;
 	uint32_t csid_rdi_cfg1_addr;
 	uint32_t csid_rdi_ctrl_addr;
-	uint32_t csid_rdi_frame_drop_pattern;
-	uint32_t csid_rdi_frame_drop_period;
-	uint32_t csid_rdi_irq_subsample_pattern;
-	uint32_t csid_rdi_irq_subsample_period;
 	uint32_t csid_rdi_rst_strobes_addr;
 	uint32_t csid_rdi_status_addr;
 	uint32_t csid_rdi_misr_val0_addr;
 	uint32_t csid_rdi_misr_val1_addr;
-	uint32_t csid_rdi_misr_val2_addr;
-	uint32_t csid_rdi_misr_val3_addr;
-	uint32_t csid_rdi_format_measure_cfg0_addr;
-	uint32_t csid_rdi_format_measure_cfg1_addr;
-	uint32_t csid_rdi_format_measure0_addr;
-	uint32_t csid_rdi_format_measure1_addr;
-	uint32_t csid_rdi_format_measure2_addr;
 	uint32_t csid_rdi_timestamp_curr0_sof_addr;
 	uint32_t csid_rdi_timestamp_curr1_sof_addr;
 	uint32_t csid_rdi_timestamp_prev0_sof_addr;
@@ -211,14 +158,9 @@ struct cam_tfe_csid_rdi_reg_offset {
 	uint32_t csid_rdi_err_recovery_cfg2_addr;
 	uint32_t csid_rdi_byte_cntr_ping_addr;
 	uint32_t csid_rdi_byte_cntr_pong_addr;
-	uint32_t csid_rdi_multi_vcdt_cfg0_addr;
 
 	/* configuration */
 	uint32_t packing_format;
-	uint32_t format_measure_en_shift_val;
-	uint32_t measure_en_hbi_vbi_cnt_val;
-	bool     is_multi_vc_dt_supported;
-	uint32_t cgc_mode_en_shift_val;
 };
 
 struct cam_tfe_csid_csi2_rx_reg_offset {
@@ -243,14 +185,12 @@ struct cam_tfe_csid_csi2_rx_reg_offset {
 	uint32_t csid_csi2_rx_total_crc_err_addr;
 
 	/*configurations */
-	uint32_t phy_tpg_base_id;
 	uint32_t phy_sel_base;
 	uint32_t csi2_rst_srb_all;
 	uint32_t csi2_rst_done_shift_val;
 	uint32_t csi2_irq_mask_all;
 	uint32_t csi2_misr_enable_shift_val;
 	uint32_t csi2_vc_mode_shift_val;
-	uint32_t csi2_rx_epd_mode_shift_en;
 	uint32_t csi2_capture_long_pkt_en_shift;
 	uint32_t csi2_capture_short_pkt_en_shift;
 	uint32_t csi2_capture_cphy_pkt_en_shift;
@@ -263,7 +203,6 @@ struct cam_tfe_csid_csi2_rx_reg_offset {
 	uint32_t csi2_rx_long_pkt_hdr_rst_stb_shift;
 	uint32_t csi2_rx_short_pkt_hdr_rst_stb_shift;
 	uint32_t csi2_rx_cphy_pkt_hdr_rst_stb_shift;
-	bool     need_to_sel_tpg_mux;
 };
 
 struct cam_tfe_csid_common_reg_offset {
@@ -286,36 +225,25 @@ struct cam_tfe_csid_common_reg_offset {
 	uint32_t version_incr;
 	uint32_t num_rdis;
 	uint32_t num_pix;
-	uint32_t num_ppp;
 	uint32_t csid_reg_rst_stb;
 	uint32_t csid_rst_stb;
 	uint32_t csid_rst_stb_sw_all;
 	uint32_t ipp_path_rst_stb_all;
-	uint32_t ppp_path_rst_stb_all;
 	uint32_t rdi_path_rst_stb_all;
 	uint32_t path_rst_done_shift_val;
 	uint32_t path_en_shift_val;
 	uint32_t dt_id_shift_val;
 	uint32_t vc_shift_val;
 	uint32_t dt_shift_val;
-	uint32_t vc1_shift_val;
-	uint32_t dt1_shift_val;
-	uint32_t multi_vc_dt_en_shift_val;
 	uint32_t fmt_shift_val;
 	uint32_t plain_fmt_shit_val;
 	uint32_t crop_v_en_shift_val;
 	uint32_t crop_h_en_shift_val;
 	uint32_t crop_shift;
 	uint32_t ipp_irq_mask_all;
-	uint32_t ppp_irq_mask_all;
 	uint32_t rdi_irq_mask_all;
 	uint32_t top_tfe2_pix_pipe_fuse_reg;
 	uint32_t top_tfe2_fuse_reg;
-	uint32_t format_measure_height_shift_val;
-	uint32_t format_measure_height_mask_val;
-	uint32_t format_measure_width_mask_val;
-	bool     format_measure_support;
-	bool     sync_clk;
 };
 
 /**
@@ -331,35 +259,7 @@ struct cam_tfe_csid_reg_offset {
 	const struct cam_tfe_csid_common_reg_offset   *cmn_reg;
 	const struct cam_tfe_csid_csi2_rx_reg_offset  *csi2_reg;
 	const struct cam_tfe_csid_pxl_reg_offset      *ipp_reg;
-	const struct cam_tfe_csid_pxl_reg_offset      *ppp_reg;
 	const struct cam_tfe_csid_rdi_reg_offset *rdi_reg[CAM_TFE_CSID_RDI_MAX];
-};
-
-/**
- * struct cam_tfe_csid_secure_info: Contains all relevant info to be
- *                                  programmed for targets supporting
- *                                  this feature
- * @phy_sel:          Intermediate value for this mask. CSID passes
- *                    phy_sel.This variable's position at the top is to
- *                    be left unchanged, to have it be used correctly
- *                    in the cam_subdev_notify_message callback for
- *                    csiphy
- * @lane_cfg:         This value is similar to lane_assign in the PHY
- *                    driver, and is used to identify the particular
- *                    PHY instance with which this IFE session is
- *                    connected to.
- * @vc_mask:          Virtual channel masks (Unused for mobile usecase)
- * @csid_hw_idx_mask: Bit position denoting CSID(s) in use for secure
- *                    session
- * @cdm_hw_idx_mask:  Bit position denoting CDM in use for secure
- *                    session
- */
-struct cam_tfe_csid_secure_info {
-	uint32_t phy_sel;
-	uint32_t lane_cfg;
-	uint64_t vc_mask;
-	uint32_t csid_hw_idx_mask;
-	uint32_t cdm_hw_idx_mask;
 };
 
 /**
@@ -378,11 +278,10 @@ struct cam_tfe_csid_hw_info {
 
 /**
  * struct cam_tfe_csid_csi2_rx_cfg- csid csi2 rx configuration data
- * @phy_sel:          input resource type for sensor only
- * @lane_type:        lane type: c-phy or d-phy
- * @lane_num :        active lane number
- * @lane_cfg:         lane configurations: 4 bits per lane
- * @epd_supported:    Flag to check if epd supported
+ * @phy_sel:     input resource type for sensor only
+ * @lane_type:   lane type: c-phy or d-phy
+ * @lane_num :   active lane number
+ * @lane_cfg:    lane configurations: 4 bits per lane
  *
  */
 struct cam_tfe_csid_csi2_rx_cfg  {
@@ -390,77 +289,60 @@ struct cam_tfe_csid_csi2_rx_cfg  {
 	uint32_t                        lane_type;
 	uint32_t                        lane_num;
 	uint32_t                        lane_cfg;
-	uint32_t                        epd_supported;
-};
-
-/**
- * struct vc_dt_data- VC DT data
- *
- * @vc:          VC data
- * @dt:          DT data
- *
- */
-struct vc_dt_data {
-	uint32_t                     vc;
-	uint32_t                     dt;
 };
 
 /**
  * struct cam_tfe_csid_cid_data- cid configuration private data
  *
- * @vc_dt:              VC DT data
- * @num_valid_vc_dt:    Number of VC-DTs
- * @cnt:                Cid resource reference count.
+ * @vc:          Virtual channel
+ * @dt:          Data type
+ * @cnt:         Cid resource reference count.
  *
  */
 struct cam_tfe_csid_cid_data {
-	struct vc_dt_data            vc_dt[CAM_ISP_TFE_VC_DT_CFG];
-	uint32_t                     num_valid_vc_dt;
+	uint32_t                     vc;
+	uint32_t                     dt;
 	uint32_t                     cnt;
 };
 
 /**
  * struct cam_tfe_csid_path_cfg- csid path configuration details. It is stored
  *                          as private data for IPP/ RDI paths
- * @vc_dt :             VC DT data
- * @num_valid_vc_dt:    Number of valid VC-DTs
- * @cid                 cid number, it is same as DT_ID number in HW
- * @in_format:          input decode format
- * @out_format:         output format
- * @crop_enable:        crop is enable or disabled, if enabled
- *                      then remaining parameters are valid.
- * @start_pixel:        start pixel
- * @end_pixel:          end_pixel
- * @width:              width
- * @start_line:         start line
- * @end_line:           end_line
- * @height:             heigth
- * @sync_mode:          Applicable for IPP/RDI path reservation
- *                      Reserving the path for master IPP or slave IPP
- *                      master (set value 1), Slave ( set value 2)
- *                      for RDI, set  mode to none
- * @master_idx:         For Slave reservation, Give master TFE instance Index.
- *                      Slave will synchronize with master Start and stop
- *                      operations
- * @clk_rate:           Clock rate
- * @sensor_width:       Sensor width in pixel
- * @sensor_height:      Sensor height in pixel
- * @sensor_fps:         Sensor fps
- * @sensor_hbi:         Sensor horizontal blanking interval
- * @sensor_vbi:         Sensor vertical blanking interval
- * @bayer_bin:          Bayer binning
- * @qcfa_bin:           Quad-CFA binning
- * @usage_type:         dual or single tfe information
- * @init_frame_drop     init frame drop value. In dual ife case rdi need to drop
- *                      one more frame than pix.
- * @res_sof_cnt         path resource sof count value. it used for initial
- *                      frame drop
- * @is_shdr_master      flag to indicate path to be shdr master
- * @is_shdr             flag to indicate if shdr mode is enabled
+ * @vc :            Virtual channel number
+ * @dt :            Data type number
+ * @cid             cid number, it is same as DT_ID number in HW
+ * @in_format:      input decode format
+ * @out_format:     output format
+ * @crop_enable:    crop is enable or disabled, if enabled
+ *                  then remaining parameters are valid.
+ * @start_pixel:    start pixel
+ * @end_pixel:      end_pixel
+ * @width:          width
+ * @start_line:     start line
+ * @end_line:       end_line
+ * @height:         heigth
+ * @sync_mode:      Applicable for IPP/RDI path reservation
+ *                  Reserving the path for master IPP or slave IPP
+ *                  master (set value 1), Slave ( set value 2)
+ *                  for RDI, set  mode to none
+ * @master_idx:     For Slave reservation, Give master TFE instance Index.
+ *                  Slave will synchronize with master Start and stop operations
+ * @clk_rate        Clock rate
+ * @sensor_width    Sensor width in pixel
+ * @sensor_height   Sensor height in pixel
+ * @sensor_fps      Sensor fps
+ * @sensor_hbi      Sensor horizontal blanking interval
+ * @sensor_vbi      Sensor vertical blanking interval
+ * @usage_type:     dual or single tfe information
+ * @init_frame_drop init frame drop value. In dual ife case rdi need to drop one
+ *                  more frame than pix.
+ * @res_sof_cnt     path resource sof count value. it used for initial
+ *                  frame drop
+
  */
 struct cam_tfe_csid_path_cfg {
-	struct vc_dt_data               vc_dt[CAM_ISP_TFE_VC_DT_CFG];
-	uint32_t                        num_valid_vc_dt;
+	uint32_t                        vc;
+	uint32_t                        dt;
 	uint32_t                        cid;
 	uint32_t                        in_format;
 	uint32_t                        out_format;
@@ -479,13 +361,9 @@ struct cam_tfe_csid_path_cfg {
 	uint32_t                        sensor_fps;
 	uint32_t                        sensor_hbi;
 	uint32_t                        sensor_vbi;
-	uint32_t                        bayer_bin;
-	uint32_t                        qcfa_bin;
 	uint32_t                        usage_type;
 	uint32_t                        init_frame_drop;
 	uint32_t                        res_sof_cnt;
-	bool                            is_shdr_master;
-	bool                            is_shdr;
 };
 
 /**
@@ -516,14 +394,13 @@ struct cam_csid_evt_payload {
  * @in_res_id:                csid in resource type
  * @csi2_rx_cfg:              csi2 rx decoder configuration for csid
  * @csi2_rx_reserve_cnt:      csi2 reservations count value
- * pxl_pipe_enable:           flag to specify if the hardware has IPP
  * @ipp_res:                  image pixel path resource
- * @ppp_res:                  PD pixel path resource
  * @rdi_res:                  raw dump image path resources
  * @cid_res:                  cid resources values
  * @csid_top_reset_complete:  csid top reset completion
  * @csid_csi2_reset_complete: csi2 reset completion
  * @csid_ipp_reset_complete:  ipp reset completion
+ * @csid_ppp_complete:        ppp reset completion
  * @csid_rdin_reset_complete: rdi n completion
  * @csid_debug:               csid debug information to enable the SOT, EOT,
  *                            SOF, EOF, measure etc in the csid hw
@@ -544,8 +421,6 @@ struct cam_csid_evt_payload {
  *                            or not
  * @prev_boot_timestamp       previous frame bootime stamp
  * @prev_qtimer_ts            previous frame qtimer csid timestamp
- * @sync_clk                  sync clocks such that freq(TFE)>freq(CSID)>freq(CSIPHY)
- * @is_secure                 Flag to denote secure operation
  *
  */
 struct cam_tfe_csid_hw {
@@ -560,13 +435,11 @@ struct cam_tfe_csid_hw {
 	uint32_t                            csi2_reserve_cnt;
 	uint32_t                            pxl_pipe_enable;
 	struct cam_isp_resource_node        ipp_res;
-	struct cam_isp_resource_node        ppp_res;
 	struct cam_isp_resource_node        rdi_res[CAM_TFE_CSID_RDI_MAX];
 	struct cam_tfe_csid_cid_data        cid_res[CAM_TFE_CSID_CID_MAX];
 	struct completion                   csid_top_complete;
 	struct completion                   csid_csi2_complete;
 	struct completion                   csid_ipp_complete;
-	struct completion                   csid_ppp_complete;
 	struct completion     csid_rdin_complete[CAM_TFE_CSID_RDI_MAX];
 	uint64_t                            csid_debug;
 	uint64_t                            clk_rate;
@@ -582,8 +455,6 @@ struct cam_tfe_csid_hw {
 	bool                                ppi_enable;
 	uint64_t                            prev_boot_timestamp;
 	uint64_t                            prev_qtimer_ts;
-	bool                                sync_clk;
-	bool                                is_secure;
 };
 
 int cam_tfe_csid_hw_probe_init(struct cam_hw_intf  *csid_hw_intf,

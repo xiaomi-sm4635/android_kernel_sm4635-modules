@@ -8,6 +8,7 @@
 #include <linux/of_gpio.h>
 #include "cam_flash_soc.h"
 #include "cam_res_mgr_api.h"
+#include <dt-bindings/msm-camera.h>
 
 void cam_flash_put_source_node_data(struct cam_flash_ctrl *fctrl)
 {
@@ -60,8 +61,6 @@ void cam_flash_put_source_node_data(struct cam_flash_ctrl *fctrl)
 	}
 }
 
-#if __or(IS_REACHABLE(CONFIG_LEDS_QPNP_FLASH_V2), \
-			IS_REACHABLE(CONFIG_LEDS_QTI_FLASH))
 static int32_t cam_get_source_node_info(
 	struct device_node *of_node,
 	struct cam_flash_ctrl *fctrl,
@@ -75,6 +74,26 @@ static int32_t cam_get_source_node_info(
 
 	soc_private->is_wled_flash =
 		of_property_read_bool(of_node, "wled-flash-support");
+
+	rc = of_property_read_u32(of_node, "flash-type", &soc_private->flash_type);
+	if (rc) {
+		CAM_ERR(CAM_FLASH,
+			"flash-type read failed rc=%d", rc);
+		soc_private->flash_type = CAM_FLASH_TYPE_PMIC; // default to PMIC flash
+	}
+
+	if (soc_private->flash_type == CAM_FLASH_TYPE_GPIO) {
+		fctrl->enf_gpio = of_get_named_gpio(of_node, "enf-gpio", 0);
+		fctrl->enm_gpio = of_get_named_gpio(of_node, "enm-gpio", 0);
+
+		rc = gpio_request(fctrl->enf_gpio, "flash_enf_gpio");
+		if (rc < 0)
+			CAM_ERR(CAM_FLASH, "flash_enf_gpio request error rc=%d", rc);
+
+		rc = gpio_request(fctrl->enm_gpio, "flash_enm_gpio");
+		if (rc < 0)
+			CAM_ERR(CAM_FLASH, "flash_enf_gpio request error rc=%d", rc);
+	}
 
 	switch_src_node = of_parse_phandle(of_node, "switch-source", 0);
 	if (!switch_src_node) {
@@ -134,7 +153,7 @@ static int32_t cam_get_source_node_info(
 			if (soc_private->is_wled_flash) {
 				rc = cam_flash_led_prepare(
 					fctrl->flash_trigger[i],
-					QUERY_MAX_AVAIL_CURRENT,
+					QUERY_CURRENT,
 					&soc_private->flash_max_current[i],
 					true);
 				if (rc) {
@@ -162,10 +181,12 @@ static int32_t cam_get_source_node_info(
 			}
 
 			/* Read operational-current */
-			if (of_property_read_u32(flash_src_node,
+			rc = of_property_read_u32(flash_src_node,
 				"qcom,current-ma",
-				&soc_private->flash_op_current[i])) {
+				&soc_private->flash_op_current[i]);
+			if (rc) {
 				CAM_DBG(CAM_FLASH, "op-current: read failed");
+				rc = 0;
 			}
 
 			/* Read max-duration */
@@ -223,7 +244,7 @@ static int32_t cam_get_source_node_info(
 			if (soc_private->is_wled_flash) {
 				rc = cam_flash_led_prepare(
 					fctrl->torch_trigger[i],
-					QUERY_MAX_AVAIL_CURRENT,
+					QUERY_CURRENT,
 					&soc_private->torch_max_current[i],
 					true);
 				if (rc) {
@@ -268,7 +289,6 @@ static int32_t cam_get_source_node_info(
 
 	return rc;
 }
-#endif
 
 int cam_flash_get_dt_data(struct cam_flash_ctrl *fctrl,
 	struct cam_hw_soc_info *soc_info)
@@ -302,15 +322,12 @@ int cam_flash_get_dt_data(struct cam_flash_ctrl *fctrl,
 		goto free_soc_private;
 	}
 
-#if __or(IS_ENABLED(CONFIG_LEDS_QPNP_FLASH_V2), \
-			IS_ENABLED(CONFIG_LEDS_QTI_FLASH))
 	rc = cam_get_source_node_info(of_node, fctrl, soc_info->soc_private);
 	if (rc) {
 		CAM_ERR(CAM_FLASH,
 			"cam_flash_get_pmic_source_info failed rc %d", rc);
 		goto free_soc_private;
 	}
-#endif
 	return rc;
 
 free_soc_private:

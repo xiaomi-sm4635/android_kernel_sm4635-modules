@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/timer.h>
@@ -121,8 +120,7 @@ static int cam_lrme_hw_dump(
 	req_ts = ktime_to_timespec64(req->submit_timestamp);
 
 	if (diff < CAM_LRME_RESPONSE_TIME_THRESHOLD) {
-		CAM_INFO(CAM_LRME,
-			"No error req %lld req timestamp:[%lld.%06lld] curr timestamp:[%lld.%06lld]",
+		CAM_INFO(CAM_LRME, "No error req %lld %ld:%06ld %ld:%06ld",
 			dump_args->request_id,
 			req_ts.tv_sec,
 			req_ts.tv_nsec/NSEC_PER_USEC,
@@ -132,8 +130,7 @@ static int cam_lrme_hw_dump(
 		return 0;
 	}
 
-	CAM_INFO(CAM_LRME,
-		"Error req %lld req timestamp:[%lld.%06lld] curr timestamp:[%lld.%06lld]",
+	CAM_INFO(CAM_LRME, "Error req %lld %ld:%06ld %ld:%06ld",
 		dump_args->request_id,
 		req_ts.tv_sec,
 		req_ts.tv_nsec/NSEC_PER_USEC,
@@ -299,7 +296,6 @@ static int cam_lrme_hw_util_process_config_hw(struct cam_hw_info *lrme_hw,
 	struct cam_lrme_hw_info *hw_info =
 		((struct cam_lrme_core *)lrme_hw->core_info)->hw_info;
 	uint32_t num_cmd = 0;
-	uint32_t num_regval_pairs = 0;
 	uint32_t size;
 	uint32_t mem_base, available_size = config_args->size;
 	uint32_t output_res_mask = 0, input_res_mask = 0;
@@ -408,38 +404,27 @@ static int cam_lrme_hw_util_process_config_hw(struct cam_hw_info *lrme_hw,
 	}
 
 	mem_base = CAM_SOC_GET_REG_MAP_CAM_BASE(soc_info, CAM_LRME_BASE_IDX);
-	if (mem_base == -1) {
-		CAM_ERR(CAM_LRME, "failed to get mem_base, index: %d num_reg_map: %u",
-			CAM_LRME_BASE_IDX, soc_info->num_reg_map);
-		return -EINVAL;
-	}
 
 	hw_cdm_info->cdm_ops->cdm_write_changebase(cmd_buf_addr, mem_base);
 	cmd_buf_addr += size;
 	available_size -= (size * 4);
 
-	num_regval_pairs = num_cmd / 2;
+	size = hw_cdm_info->cdm_ops->cdm_required_size_reg_random(
+		num_cmd / 2);
 
-	if (num_regval_pairs) {
-		size = hw_cdm_info->cdm_ops->cdm_required_size_reg_random(
-			num_regval_pairs);
-
-		if ((size * 4) > available_size) {
-			CAM_ERR(CAM_LRME, "buf size:%d is not sufficient, expected: %d",
-				available_size, size);
-			return -ENOMEM;
-		}
-
-		hw_cdm_info->cdm_ops->cdm_write_regrandom(cmd_buf_addr,
-			num_regval_pairs, reg_val_pair);
-		cmd_buf_addr += size;
-		available_size -= (size * 4);
-
-	} else {
-		CAM_DBG(CAM_LRME, "No reg val pairs");
+	if ((size * 4) > available_size) {
+		CAM_ERR(CAM_LRME, "buf size:%d is not sufficient, expected: %d",
+			available_size, size);
+		return -ENOMEM;
 	}
 
-	config_args->config_buf_size = config_args->size - available_size;
+	hw_cdm_info->cdm_ops->cdm_write_regrandom(cmd_buf_addr, num_cmd / 2,
+		reg_val_pair);
+	cmd_buf_addr += size;
+	available_size -= (size * 4);
+
+	config_args->config_buf_size =
+		config_args->size - available_size;
 
 	return 0;
 }
@@ -476,7 +461,7 @@ static int cam_lrme_hw_util_reset(struct cam_hw_info *lrme_hw,
 		reinit_completion(&lrme_core->reset_complete);
 		cam_io_w_mb(0x1, soc_info->reg_map[0].mem_base +
 			hw_info->titan_reg.top_rst_cmd);
-		time_left = cam_common_wait_for_completion_timeout(
+		time_left = wait_for_completion_timeout(
 			&lrme_core->reset_complete,
 			msecs_to_jiffies(CAM_LRME_HW_RESET_TIMEOUT));
 		if (time_left <= 0) {
@@ -494,7 +479,7 @@ static int cam_lrme_hw_util_reset(struct cam_hw_info *lrme_hw,
 		reinit_completion(&lrme_core->reset_complete);
 		cam_io_w_mb(0x2, soc_info->reg_map[0].mem_base +
 			hw_info->titan_reg.top_rst_cmd);
-		time_left = cam_common_wait_for_completion_timeout(
+		time_left = wait_for_completion_timeout(
 			&lrme_core->reset_complete,
 			msecs_to_jiffies(CAM_LRME_HW_RESET_TIMEOUT));
 		if (time_left <= 0) {

@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2017-2019, 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
 #ifndef _CAM_NODE_H_
@@ -21,34 +20,28 @@
  *
  * @name:                  Name for struct cam_node
  * @state:                 Node state:
- *                         0 = uninitialized, 1 = initialized
- * @device_idx:            Index to identify which device this node belongs to
+ *                            0 = uninitialized, 1 = initialized
  * @list_mutex:            Mutex for the context pool
  * @free_ctx_list:         Free context pool list
  * @ctx_list:              Context list
  * @ctx_size:              Context list size
  * @hw_mgr_intf:           Interface for cam_node to HW
  * @crm_node_intf:         Interface for the CRM to cam_node
- * @sd_handler:            Shutdown handler for this subdev
  *
  */
 struct cam_node {
-	char                              name[CAM_CTX_DEV_NAME_MAX_LENGTH];
-	uint32_t                          state;
-	uint32_t                          device_idx;
+	char                         name[CAM_CTX_DEV_NAME_MAX_LENGTH];
+	uint32_t                     state;
 
 	/* context pool */
-	struct mutex                      list_mutex;
-	struct list_head                  free_ctx_list;
-	struct cam_context               *ctx_list;
-	uint32_t                          ctx_size;
+	struct mutex                 list_mutex;
+	struct list_head             free_ctx_list;
+	struct cam_context          *ctx_list;
+	uint32_t                     ctx_size;
 
 	/* interfaces */
-	struct cam_hw_mgr_intf            hw_mgr_intf;
-	struct cam_req_mgr_kmd_ops        crm_node_intf;
-
-	int (*sd_handler)(struct v4l2_subdev *sd,
-		struct v4l2_subdev_fh *fh);
+	struct cam_hw_mgr_intf       hw_mgr_intf;
+	struct cam_req_mgr_kmd_ops   crm_node_intf;
 };
 
 /**
@@ -119,5 +112,18 @@ void cam_node_put_ctxt_to_free_list(struct kref *ref);
  */
 int32_t cam_get_dev_handle_info(uint64_t handle,
 	struct cam_context **ctx, int32_t dev_index);
+
+/**
+ * cam_node_handle_shutdown_dev()
+ *
+ * @brief:       Shutdowns all the active devices.
+ *
+ * @node:        pointer to struct node
+ * @cmd:         pointer to struct cmd
+ * @fh:          pointer to struct v4l2_subdev_fh
+ *
+ */
+int cam_node_handle_shutdown_dev(struct cam_node *node,
+	struct cam_control *cmd, struct v4l2_subdev_fh *fh);
 
 #endif /* _CAM_NODE_H_ */

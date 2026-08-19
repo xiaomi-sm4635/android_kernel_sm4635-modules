@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -23,28 +22,19 @@
 static struct cam_ipe_device_hw_info cam_ipe_hw_info[] = {
 	{
 		.hw_idx = 0,
-		.pwr_ctrl = 0x40,
-		.pwr_status = 0x3C,
-		.top_rst_cmd = 0x1008,
-		.top_irq_status = 0x100C,
-		.cdm_rst_cmd = 0x10,
-		.cdm_irq_status = 0x44,
-		.cdm_rst_val = 0xF,
+		.pwr_ctrl = 0x4c,
+		.pwr_status = 0x48,
+		.reserved = 0,
+	},
+	{
+		.hw_idx = 1,
+		.pwr_ctrl = 0x54,
+		.pwr_status = 0x50,
+		.reserved = 0,
 	},
 };
 
-static struct cam_ipe_device_hw_info cam_ipe680_hw_info[] = {
-	{
-		.hw_idx = 0,
-		.pwr_ctrl = 0x40,
-		.pwr_status = 0x3C,
-		.top_rst_cmd = 0x1008,
-		.top_irq_status = 0x100C,
-		.cdm_rst_cmd = 0x10,
-		.cdm_irq_status = 0x44,
-		.cdm_rst_val = 0x7F,
-	},
-};
+static char ipe_dev_name[8];
 
 int cam_ipe_register_cpas(struct cam_hw_soc_info *soc_info,
 	struct cam_ipe_device_core_info *core_info,
@@ -79,7 +69,7 @@ static int cam_ipe_component_bind(struct device *dev,
 	struct cam_ipe_device_hw_info     *hw_info = NULL;
 	int                                rc = 0;
 	struct cam_cpas_query_cap query;
-	uint32_t *cam_caps, num_cap_mask;
+	uint32_t cam_caps;
 	uint32_t hw_idx;
 	struct platform_device *pdev = to_platform_device(dev);
 
@@ -88,13 +78,13 @@ static int cam_ipe_component_bind(struct device *dev,
 
 	rc = cam_cpas_get_hw_info(&query.camera_family,
 			&query.camera_version, &query.cpas_version,
-			&cam_caps, &num_cap_mask, NULL, NULL);
+			&cam_caps, NULL);
 	if (rc) {
 		CAM_ERR(CAM_ICP, "failed to get hw info rc=%d", rc);
 		return rc;
 	}
 
-	if ((!(cam_caps[IPE_CAPS_MASK_IDX] & CPAS_IPE1_BIT)) && (hw_idx)) {
+	if ((!(cam_caps & CPAS_IPE1_BIT)) && (hw_idx)) {
 		CAM_ERR(CAM_ICP, "IPE1 hw idx = %d\n", hw_idx);
 		return -EINVAL;
 	}
@@ -110,9 +100,13 @@ static int cam_ipe_component_bind(struct device *dev,
 		return -ENOMEM;
 	}
 
+	memset(ipe_dev_name, 0, sizeof(ipe_dev_name));
+	snprintf(ipe_dev_name, sizeof(ipe_dev_name),
+		"ipe%1u", ipe_dev_intf->hw_idx);
+
 	ipe_dev->soc_info.pdev = pdev;
 	ipe_dev->soc_info.dev = &pdev->dev;
-	ipe_dev->soc_info.dev_name = pdev->name;
+	ipe_dev->soc_info.dev_name = ipe_dev_name;
 	ipe_dev_intf->hw_priv = ipe_dev;
 	ipe_dev_intf->hw_ops.init = cam_ipe_init_hw;
 	ipe_dev_intf->hw_ops.deinit = cam_ipe_deinit_hw;
@@ -144,7 +138,7 @@ static int cam_ipe_component_bind(struct device *dev,
 		rc = -EINVAL;
 		return rc;
 	}
-	hw_info = (struct cam_ipe_device_hw_info *)match_dev->data;
+	hw_info = &cam_ipe_hw_info[ipe_dev_intf->hw_idx];
 	core_info->ipe_hw_info = hw_info;
 
 	rc = cam_ipe_init_soc_resources(&ipe_dev->soc_info, cam_ipe_irq,
@@ -188,12 +182,6 @@ static void cam_ipe_component_unbind(struct device *dev,
 
 	CAM_DBG(CAM_ICP, "Unbinding component: %s", pdev->name);
 	ipe_dev_intf = platform_get_drvdata(pdev);
-
-	if (!ipe_dev_intf) {
-		CAM_ERR(CAM_ICP, "Error No data in pdev");
-		return;
-	}
-
 	ipe_dev = ipe_dev_intf->hw_priv;
 	core_info = (struct cam_ipe_device_core_info *)ipe_dev->core_info;
 	cam_cpas_unregister_client(core_info->cpas_handle);
@@ -231,10 +219,6 @@ static const struct of_device_id cam_ipe_dt_match[] = {
 	{
 		.compatible = "qcom,cam-ipe",
 		.data = &cam_ipe_hw_info,
-	},
-	{
-		.compatible = "qcom,cam-ipe680",
-		.data = &cam_ipe680_hw_info,
 	},
 	{}
 };

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -22,9 +21,6 @@
 #include "cam_jpeg_dma_hw_info_ver_4_2_0.h"
 #include "cam_jpeg_dma_165_hw_info_ver_4_2_0.h"
 #include "cam_jpeg_dma_580_hw_info_ver_4_2_0.h"
-#include "cam_jpeg_dma_680_hw_info_ver_4_2_0.h"
-#include "cam_jpeg_dma_780_hw_info_ver_4_2_0.h"
-#include "cam_jpeg_dma_770_hw_info_ver_4_2_0.h"
 #include "camera_main.h"
 
 static int cam_jpeg_dma_register_cpas(struct cam_hw_soc_info *soc_info,
@@ -98,7 +94,6 @@ static int cam_jpeg_dma_component_bind(struct device *dev,
 	jpeg_dma_dev_intf->hw_ops.stop = cam_jpeg_dma_stop_hw;
 	jpeg_dma_dev_intf->hw_ops.reset = cam_jpeg_dma_reset_hw;
 	jpeg_dma_dev_intf->hw_ops.process_cmd = cam_jpeg_dma_process_cmd;
-	jpeg_dma_dev_intf->hw_ops.test_irq_line = cam_jpeg_dma_test_irq_line;
 	jpeg_dma_dev_intf->hw_type = CAM_JPEG_DEV_DMA;
 
 	platform_set_drvdata(pdev, jpeg_dma_dev_intf);
@@ -252,19 +247,6 @@ static const struct of_device_id cam_jpeg_dma_dt_match[] = {
 	{
 		.compatible = "qcom,cam_jpeg_dma_580",
 		.data = &cam_jpeg_dma_580_hw_info,
-	},
-	{
-		.compatible = "qcom,cam_jpeg_dma_680",
-		.data = &cam_jpeg_dma_680_hw_info,
-	},
-	{
-		.compatible = "qcom,cam_jpeg_dma_780",
-		.data = &cam_jpeg_dma_780_hw_info,
-	},
-	{
-		.compatible = "qcom,cam_jpeg_dma_770",
-		.data = &cam_jpeg_dma_770_hw_info,
-
 	},
 	{}
 };

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/device.h>
@@ -63,7 +62,7 @@ static int cam_fd_dev_open(struct v4l2_subdev *sd,
 	return 0;
 }
 
-static int cam_fd_dev_close_internal(struct v4l2_subdev *sd,
+int cam_fd_dev_close_internal(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh)
 {
 	struct cam_fd_dev *fd_dev = &g_fd_dev;
@@ -97,7 +96,7 @@ static int cam_fd_dev_close_internal(struct v4l2_subdev *sd,
 static int cam_fd_dev_close(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh)
 {
-	bool crm_active = cam_req_mgr_is_open();
+	bool crm_active = cam_req_mgr_is_open(CAM_FD);
 
 	if (crm_active) {
 		CAM_DBG(CAM_FD, "CRM is ACTIVE, close should be from CRM");
@@ -142,7 +141,7 @@ static int cam_fd_dev_component_bind(struct device *dev,
 
 	for (i = 0; i < CAM_CTX_MAX; i++) {
 		rc = cam_fd_context_init(&g_fd_dev.fd_ctx[i],
-			&g_fd_dev.base_ctx[i], &node->hw_mgr_intf, i, -1);
+			&g_fd_dev.base_ctx[i], &node->hw_mgr_intf, i);
 		if (rc) {
 			CAM_ERR(CAM_FD, "FD context init failed i=%d, rc=%d",
 				i, rc);
@@ -157,7 +156,6 @@ static int cam_fd_dev_component_bind(struct device *dev,
 		goto deinit_ctx;
 	}
 
-	node->sd_handler = cam_fd_dev_close_internal;
 	mutex_init(&g_fd_dev.lock);
 	g_fd_dev.probe_done = true;
 	CAM_DBG(CAM_FD, "Component bound successfully");

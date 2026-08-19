@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_REQ_MGR_UTIL_API_H_
@@ -9,6 +9,9 @@
 
 #include <media/cam_req_mgr.h>
 #include "cam_req_mgr_util_priv.h"
+
+/* Interval for cam_info_rate_limit_custom() */
+#define CAM_RATE_LIMIT_INTERVAL_5SEC 5
 
 /**
  * state of a handle(session/device)
@@ -83,17 +86,6 @@ struct cam_create_dev_hdl {
 	void *ops;
 	void *priv;
 };
-
-/**
- * cam_handle_validate() - validate session/device handle
- * @session_hdl: handle for a session
- * @handle: handle for a session/device
- *
- * cam_req_mgr_core and KMD drivers use this function to
- * validate session/device handle. Returns 0 on success,
- * -EINVAL on failure.
- */
-int cam_handle_validate(int32_t session_hdl, int32_t handle);
 
 /**
  * cam_create_session_hdl() - create a session handle
@@ -218,5 +210,12 @@ int32_t cam_req_mgr_util_deinit(void);
  * cleaned
  */
 int32_t cam_req_mgr_util_free_hdls(void);
+
+/**
+ * cam_get_dev_handle_status() - get dev handles status
+ *
+ * Returns dev handle status
+ */
+uint64_t cam_get_dev_handle_status(void);
 
 #endif /* _CAM_REQ_MGR_UTIL_API_H_ */

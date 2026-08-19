@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/delay.h>
@@ -17,73 +16,26 @@
 #include "cam_debug_util.h"
 #include "cam_smmu_api.h"
 #include "camera_main.h"
-#include "cam_common_util.h"
-#include "cam_context_utils.h"
 
 #define CAM_JPEG_DEV_NAME "cam-jpeg"
 
 static struct cam_jpeg_dev g_jpeg_dev;
 
-static int cam_jpeg_dev_evt_inject_cb(void *inject_args)
-{
-	struct cam_common_inject_evt_param *inject_params = inject_args;
-	int i;
-
-	for (i = 0; i < CAM_JPEG_CTX_MAX; i++) {
-		if (g_jpeg_dev.ctx[i].dev_hdl == inject_params->dev_hdl) {
-			cam_context_add_evt_inject(&g_jpeg_dev.ctx[i],
-				&inject_params->evt_params);
-			return 0;
-		}
-	}
-
-	CAM_ERR(CAM_JPEG, "No dev hdl found %d", inject_params->dev_hdl);
-	return -EINVAL;
-}
-
 static void cam_jpeg_dev_iommu_fault_handler(
-	struct cam_smmu_pf_info *pf_smmu_info)
+	struct cam_smmu_pf_info *pf_info)
 {
-	int i, rc;
+	int i = 0;
 	struct cam_node *node = NULL;
-	struct cam_hw_dump_pf_args pf_args = {0};
 
-	if (!pf_smmu_info || !pf_smmu_info->token) {
-		CAM_ERR(CAM_JPEG, "invalid token in page handler cb");
+	if (!pf_info || !pf_info->token) {
+		CAM_ERR(CAM_ISP, "invalid token in page handler cb");
 		return;
 	}
 
-	node = (struct cam_node *)pf_smmu_info->token;
+	node = (struct cam_node *)pf_info->token;
 
-	pf_args.pf_smmu_info = pf_smmu_info;
-
-	for (i = 0; i < node->ctx_size; i++) {
-		cam_context_dump_pf_info(&(node->ctx_list[i]), &pf_args);
-		if (pf_args.pf_context_info.ctx_found)
-			/* found ctx and packet of the faulted address */
-			break;
-	}
-
-	if (i == node->ctx_size) {
-		/* Faulted ctx not found. But report PF to UMD anyway*/
-		rc = cam_context_send_pf_evt(NULL, &pf_args);
-		if (rc)
-			CAM_ERR(CAM_JPEG,
-				"Failed to notify PF event to userspace rc: %d", rc);
-	}
-}
-
-static void cam_jpeg_dev_mini_dump_cb(void *priv, void *args)
-{
-	struct cam_context *ctx = NULL;
-
-	if (!priv || !args) {
-		CAM_ERR(CAM_JPEG, "Invalid param priv %pK %pK args", priv, args);
-		return;
-	}
-
-	ctx = (struct cam_context *)priv;
-	cam_context_mini_dump_from_hw(ctx, args);
+	for (i = 0; i < node->ctx_size; i++)
+		cam_context_dump_pf_info(&(node->ctx_list[i]), pf_info);
 }
 
 static const struct of_device_id cam_jpeg_dt_match[] = {
@@ -101,12 +53,13 @@ static int cam_jpeg_subdev_open(struct v4l2_subdev *sd,
 	mutex_lock(&g_jpeg_dev.jpeg_mutex);
 	g_jpeg_dev.open_cnt++;
 	mutex_unlock(&g_jpeg_dev.jpeg_mutex);
+
 	cam_req_mgr_rwsem_read_op(CAM_SUBDEV_UNLOCK);
 
 	return 0;
 }
 
-static int cam_jpeg_subdev_close_internal(struct v4l2_subdev *sd,
+int cam_jpeg_subdev_close_internal(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh)
 {
 	int rc = 0;
@@ -138,7 +91,7 @@ end:
 static int cam_jpeg_subdev_close(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh)
 {
-	bool crm_active = cam_req_mgr_is_open();
+	bool crm_active = cam_req_mgr_is_open(CAM_JPEG);
 
 	if (crm_active) {
 		CAM_DBG(CAM_JPEG, "CRM is ACTIVE, close should be from CRM");
@@ -173,8 +126,7 @@ static int cam_jpeg_dev_component_bind(struct device *dev,
 	node = (struct cam_node *)g_jpeg_dev.sd.token;
 
 	rc = cam_jpeg_hw_mgr_init(pdev->dev.of_node,
-		(uint64_t *)&hw_mgr_intf, &iommu_hdl,
-		cam_jpeg_dev_mini_dump_cb);
+		(uint64_t *)&hw_mgr_intf, &iommu_hdl);
 	if (rc) {
 		CAM_ERR(CAM_JPEG, "Can not initialize JPEG HWmanager %d", rc);
 		goto unregister;
@@ -184,16 +136,13 @@ static int cam_jpeg_dev_component_bind(struct device *dev,
 		rc = cam_jpeg_context_init(&g_jpeg_dev.ctx_jpeg[i],
 			&g_jpeg_dev.ctx[i],
 			&node->hw_mgr_intf,
-			i, iommu_hdl);
+			i);
 		if (rc) {
 			CAM_ERR(CAM_JPEG, "JPEG context init failed %d %d",
 				i, rc);
 			goto ctx_init_fail;
 		}
 	}
-
-	cam_common_register_evt_inject_cb(cam_jpeg_dev_evt_inject_cb,
-		CAM_COMMON_EVT_INJECT_HW_JPEG);
 
 	rc = cam_node_init(node, &hw_mgr_intf, g_jpeg_dev.ctx, CAM_JPEG_CTX_MAX,
 		CAM_JPEG_DEV_NAME);
@@ -202,7 +151,6 @@ static int cam_jpeg_dev_component_bind(struct device *dev,
 		goto ctx_init_fail;
 	}
 
-	node->sd_handler = cam_jpeg_subdev_close_internal;
 	cam_smmu_set_client_page_fault_handler(iommu_hdl,
 		cam_jpeg_dev_iommu_fault_handler, node);
 

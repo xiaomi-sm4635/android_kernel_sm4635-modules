@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/of.h>
@@ -180,7 +179,6 @@ static uint32_t *cam_ope_bus_wr_update(struct ope_hw *ope_hw_info,
 	uint32_t temp = 0;
 	uint32_t wm_port_id;
 	uint32_t header_size;
-	uint32_t *next_buff_addr = NULL;
 	struct cam_hw_prepare_update_args *prepare_args;
 	struct cam_ope_ctx *ctx_data;
 	struct cam_ope_request *ope_request;
@@ -195,8 +193,7 @@ static uint32_t *cam_ope_bus_wr_update(struct ope_hw *ope_hw_info,
 	struct ope_bus_wr_io_port_cdm_batch *io_port_cdm_batch;
 	struct ope_bus_wr_io_port_cdm_info *io_port_cdm;
 	struct cam_cdm_utils_ops *cdm_ops;
-	size_t avaliable_size;
-	uint32_t size;
+
 
 	if (ctx_id < 0 || !prepare) {
 		CAM_ERR(CAM_OPE, "Invalid data: %d %x", ctx_id, prepare);
@@ -331,21 +328,10 @@ static uint32_t *cam_ope_bus_wr_update(struct ope_hw *ope_hw_info,
 			io_port_cdm->s_cdm_info[l][idx].addr = kmd_buf;
 			io_port_cdm->num_s_cmd_bufs[l]++;
 
-			avaliable_size = ope_request->ope_kmd_buf.size -
-				((uintptr_t)kmd_buf - (uintptr_t)ope_request->ope_kmd_buf.cpu_addr);
-			size = cdm_ops->cdm_required_size_reg_random(count / 2);
-			if ((size * 4) > avaliable_size) {
-				CAM_ERR(CAM_OPE, "buf size:%d is not sufficient, expected: %d",
-					avaliable_size, size * 4);
-				return NULL;
-			}
-
-			next_buff_addr = cdm_ops->cdm_write_regrandom(
+			kmd_buf = cdm_ops->cdm_write_regrandom(
 				kmd_buf, count/2, temp_reg);
-			if (next_buff_addr > kmd_buf)
-				prepare->kmd_buf_offset +=
-					((count + header_size) * sizeof(temp));
-			kmd_buf = next_buff_addr;
+			prepare->kmd_buf_offset += ((count + header_size) *
+				sizeof(temp));
 
 			CAM_DBG(CAM_OPE, "b:%d io:%d p:%d s:%d",
 				batch_idx, io_idx, k, l);
@@ -380,7 +366,6 @@ static uint32_t *cam_ope_bus_wm_disable(struct ope_hw *ope_hw_info,
 	uint32_t temp = 0;
 	uint32_t wm_port_id;
 	uint32_t header_size;
-	uint32_t *next_buff_addr = NULL;
 	struct cam_ope_ctx *ctx_data;
 	struct ope_bus_wr_ctx *bus_wr_ctx;
 	struct cam_ope_bus_wr_reg *wr_reg;
@@ -389,9 +374,7 @@ static uint32_t *cam_ope_bus_wm_disable(struct ope_hw *ope_hw_info,
 	struct ope_bus_wr_io_port_cdm_batch *io_port_cdm_batch;
 	struct ope_bus_wr_io_port_cdm_info *io_port_cdm;
 	struct cam_cdm_utils_ops *cdm_ops;
-	struct cam_ope_request *ope_request;
-	size_t avaliable_size;
-	uint32_t size;
+
 
 	if (ctx_id < 0 || !prepare) {
 		CAM_ERR(CAM_OPE, "Invalid data: %d %x", ctx_id, prepare);
@@ -406,7 +389,6 @@ static uint32_t *cam_ope_bus_wm_disable(struct ope_hw *ope_hw_info,
 	ctx_data = prepare->ctx_data;
 	req_idx = prepare->req_idx;
 	cdm_ops = ctx_data->ope_cdm.cdm_ops;
-	ope_request = ctx_data->req_list[req_idx];
 
 	bus_wr_ctx = wr_info->bus_wr_ctx[ctx_id];
 	io_port_cdm_batch = &bus_wr_ctx->io_port_cdm_batch;
@@ -444,22 +426,10 @@ static uint32_t *cam_ope_bus_wm_disable(struct ope_hw *ope_hw_info,
 			io_port_cdm->s_cdm_info[l][idx].addr = kmd_buf;
 			io_port_cdm->num_s_cmd_bufs[l]++;
 
-			avaliable_size = ope_request->ope_kmd_buf.size -
-				((uintptr_t)kmd_buf - (uintptr_t)ope_request->ope_kmd_buf.cpu_addr);
-			size = cdm_ops->cdm_required_size_reg_random(count / 2);
-			if ((size * 4) > avaliable_size) {
-				CAM_ERR(CAM_OPE, "buf size:%d is not sufficient, expected: %d",
-					avaliable_size, size * 4);
-				return NULL;
-			}
-
-			next_buff_addr = cdm_ops->cdm_write_regrandom(
+			kmd_buf = cdm_ops->cdm_write_regrandom(
 				kmd_buf, count/2, temp_reg);
-
-			if (next_buff_addr > kmd_buf)
-				prepare->kmd_buf_offset +=
-					((count + header_size) * sizeof(temp));
-			kmd_buf = next_buff_addr;
+			prepare->kmd_buf_offset += ((count + header_size) *
+				sizeof(temp));
 
 			CAM_DBG(CAM_OPE, "WR cmd bufs = %d",
 				io_port_cdm->num_s_cmd_bufs[l]);

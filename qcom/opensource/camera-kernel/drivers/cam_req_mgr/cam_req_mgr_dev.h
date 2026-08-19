@@ -16,11 +16,12 @@
  * @dev_lock: lock for the subdevice count.
  * @state: state of the root device.
  * @open_cnt: open count of subdev
- * @v4l2_sub_ids: bits representing v4l2 event ids subscribed or not
  * @cam_lock: per file handle lock
  * @cam_eventq: event queue
  * @cam_eventq_lock: lock for event queue
  * @shutdown_state: shutdown state
+ * @active_dev_id_hdls: active dev id handles
+ * @read_active_dev_id_hdls: read active_dev_id_hdls status
  */
 struct cam_req_mgr_device {
 	struct video_device *video;
@@ -29,11 +30,12 @@ struct cam_req_mgr_device {
 	struct mutex dev_lock;
 	bool state;
 	int32_t open_cnt;
-	uint32_t v4l2_sub_ids;
 	struct mutex cam_lock;
 	struct v4l2_fh *cam_eventq;
 	spinlock_t cam_eventq_lock;
 	bool shutdown_state;
+	uint64_t active_dev_id_hdls;
+	int read_active_dev_id_hdls;
 };
 
 #define CAM_REQ_MGR_GET_PAYLOAD_PTR(ev, type)        \
@@ -54,8 +56,4 @@ int cam_req_mgr_init(void);
  */
 void cam_req_mgr_exit(void);
 
-/**
- * @brief : API to get V4L2 eventIDs subscribed by UMD.
- */
-uint32_t cam_req_mgr_get_id_subscribed(void);
 #endif /* _CAM_REQ_MGR_DEV_H_ */

@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2020, The Linux Foundation. All rights reserved.
  */
 
 #ifndef _CAM_SFE_BUS_H_
@@ -11,7 +10,6 @@
 
 #define CAM_SFE_BUS_WR_VER_1_0          0x1000
 #define CAM_SFE_BUS_RD_VER_1_0          0x1000
-#define CAM_SFE_BUS_MAX_MID_PER_PORT    4
 
 #define CAM_SFE_ADD_REG_VAL_PAIR(buf_array, index, offset, val)    \
 	do {                                               \
@@ -22,23 +20,11 @@
 #define ALIGNUP(value, alignment) \
 	((value + alignment - 1) / alignment * alignment)
 
-#define CACHE_ALLOC_NONE               0
-#define CACHE_ALLOC_ALLOC              1
-#define CACHE_ALLOC_ALLOC_CLEAN        2
-#define CACHE_ALLOC_ALLOC_TRANS        3
-#define CACHE_ALLOC_CLEAN              5
-#define CACHE_ALLOC_DEALLOC            6
-#define CACHE_ALLOC_FORGET             7
-#define CACHE_ALLOC_TBH_ALLOC          8
-
-#define DISABLE_CACHING_FOR_ALL           0xFFFFFF
-#define CACHE_SCRATCH_RD_ALLOC_SHIFT      0
-#define CACHE_SCRATCH_WR_ALLOC_SHIFT      4
-#define CACHE_SCRATCH_DEBUG_SHIFT         8
-#define CACHE_BUF_RD_ALLOC_SHIFT          12
-#define CACHE_BUF_WR_ALLOC_SHIFT          16
-#define CACHE_BUF_DEBUG_SHIFT             20
-#define CACHE_BUF_PRINT_DBG_SHIFT         26
+enum cam_sfe_bus_sfe_core_id {
+	CAM_SFE_BUS_SFE_CORE_0,
+	CAM_SFE_BUS_SFE_CORE_1,
+	CAM_SFE_BUS_SFE_CORE_MAX,
+};
 
 enum cam_sfe_bus_plane_type {
 	PLANE_Y,
@@ -50,31 +36,6 @@ enum cam_sfe_bus_type {
 	BUS_TYPE_SFE_WR,
 	BUS_TYPE_SFE_RD,
 	BUS_TYPE_SFE_MAX,
-};
-
-/*
- * struct cam_sfe_bus_cache_dbg_cfg:
- *
- * @Brief:                   Bus cache debug cfg
- *
- * @scratch_alloc:           Alloc type for scratch
- * @buf_alloc:               Alloc type for actual buffer
- * @disable_all:             Disable caching for all [scratch/snapshot]
- * @disable_for_scratch:     Disable caching for scratch
- * @scratch_dbg_cfg:         Scratch alloc configured
- * @disable_for_buf:         Disable caching for buffer
- * @buf_dbg_cfg:             Buf alloc configured
- * @print_cache_cfg:         Print cache cfg
- */
-struct cam_sfe_bus_cache_dbg_cfg {
-	uint32_t scratch_alloc;
-	uint32_t buf_alloc;
-	bool disable_all;
-	bool disable_for_scratch;
-	bool scratch_dbg_cfg;
-	bool disable_for_buf;
-	bool buf_dbg_cfg;
-	bool print_cache_cfg;
 };
 
 /*
@@ -135,21 +96,5 @@ int cam_sfe_bus_deinit(
 	uint32_t                   bus_version,
 	int                        bus_type,
 	struct cam_sfe_bus       **sfe_bus);
-
-
-/*
- * cam_sfe_bus_parse_cache_cfg()
- *
- * @Brief:                   Parse SFE debug config
- *
- * @is_read:                 If set it's RM
- * @debug_val:               Debug val to be parsed
- * @dbg_cfg:                 Debug cfg of RM/WM
- *
- */
-void cam_sfe_bus_parse_cache_cfg(
-	bool is_read,
-	uint32_t debug_val,
-	struct cam_sfe_bus_cache_dbg_cfg *dbg_cfg);
 
 #endif /* _CAM_SFE_BUS_ */

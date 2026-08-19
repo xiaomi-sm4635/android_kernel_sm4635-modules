@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2017-2021,  The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/delay.h>
@@ -37,7 +37,7 @@ static void cam_virtual_cdm_work(struct work_struct *work)
 		core = (struct cam_cdm *)cdm_hw->core_info;
 
 		cam_common_util_thread_switch_delay_detect(
-			"virtual_cdm_workq", "schedule", cam_virtual_cdm_work,
+			"Virtual CDM workq schedule",
 			payload->workq_scheduled_ts,
 			CAM_WORKQ_SCHEDULE_TIME_THRESHOLD);
 
@@ -103,11 +103,6 @@ int cam_virtual_cdm_submit_bl(struct cam_hw_info *cdm_hw,
 			rc = cam_mem_get_cpu_buf(
 				cdm_cmd->cmd[i].bl_addr.mem_handle, &vaddr_ptr,
 				&len);
-			if (rc) {
-				CAM_ERR(CAM_CDM,
-					"Falied to get CPU addr_i[%d] req_type %d", i,
-					req->data->type);
-			}
 		} else if (req->data->type ==
 			CAM_CDM_BL_CMD_TYPE_KERNEL_IOVA) {
 			rc = 0;
@@ -118,6 +113,7 @@ int cam_virtual_cdm_submit_bl(struct cam_hw_info *cdm_hw,
 				"Only mem hdl/Kernel va type is supported %d",
 				req->data->type);
 			rc = -EINVAL;
+			break;
 		}
 
 		if ((!rc) && (vaddr_ptr) && (len) &&
@@ -128,7 +124,7 @@ int cam_virtual_cdm_submit_bl(struct cam_hw_info *cdm_hw,
 				cdm_cmd->cmd[i].len) {
 				CAM_ERR(CAM_CDM, "Not enough buffer");
 				rc = -EINVAL;
-				goto put_cpu_buf;
+				goto end;
 			}
 			CAM_DBG(CAM_CDM,
 				"hdl=%x vaddr=%pK offset=%d cmdlen=%d:%zu",
@@ -146,7 +142,7 @@ int cam_virtual_cdm_submit_bl(struct cam_hw_info *cdm_hw,
 					"write failed for cnt=%d:%d len %u",
 					i, req->data->cmd_arrary_count,
 					cdm_cmd->cmd[i].len);
-				goto put_cpu_buf;
+				goto end;
 			}
 		} else {
 			CAM_ERR(CAM_CDM,
@@ -157,7 +153,7 @@ int cam_virtual_cdm_submit_bl(struct cam_hw_info *cdm_hw,
 				"Sanity check failed for cmd_count=%d cnt=%d",
 				i, req->data->cmd_arrary_count);
 			rc = -EINVAL;
-			goto err;
+			goto end;
 		}
 		if (!rc) {
 			struct cam_cdm_work_payload *payload;
@@ -165,7 +161,8 @@ int cam_virtual_cdm_submit_bl(struct cam_hw_info *cdm_hw,
 			CAM_DBG(CAM_CDM,
 				"write BL success for cnt=%d with tag=%d",
 				i, core->bl_tag);
-			if (req->data->flag && (i == req->data->cmd_arrary_count)) {
+			if ((true == req->data->flag) &&
+				(i == req->data->cmd_arrary_count)) {
 				struct cam_cdm_bl_cb_request_entry *node;
 
 				node = kzalloc(sizeof(
@@ -173,7 +170,7 @@ int cam_virtual_cdm_submit_bl(struct cam_hw_info *cdm_hw,
 					GFP_KERNEL);
 				if (!node) {
 					rc = -ENOMEM;
-					goto err;
+					goto end;
 				}
 				node->request_type = CAM_HW_CDM_BL_CB_CLIENT;
 				node->client_hdl = req->handle;
@@ -206,20 +203,18 @@ int cam_virtual_cdm_submit_bl(struct cam_hw_info *cdm_hw,
 				"Now commit the BL nothing for virtual");
 			if (!rc && (core->bl_tag == 63))
 				core->bl_tag = 0;
-
-			if (req->data->type == CAM_CDM_BL_CMD_TYPE_MEM_HANDLE)
-				cam_mem_put_cpu_buf(cdm_cmd->cmd[i].bl_addr.mem_handle);
 		}
 
+		if (req->data->type == CAM_CDM_BL_CMD_TYPE_MEM_HANDLE)
+			cam_mem_put_cpu_buf(cdm_cmd->cmd[i].bl_addr.mem_handle);
 	}
 	mutex_unlock(&client->lock);
 	return rc;
 
-put_cpu_buf:
+end:
 	if (req->data->type == CAM_CDM_BL_CMD_TYPE_MEM_HANDLE)
 		cam_mem_put_cpu_buf(cdm_cmd->cmd[i].bl_addr.mem_handle);
 
-err:
 	mutex_unlock(&client->lock);
 	return rc;
 

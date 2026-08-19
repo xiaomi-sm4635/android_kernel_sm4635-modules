@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_CPASTOP_HW_H_
@@ -67,15 +67,6 @@
  * @CAM_CAMNOC_HW_IRQ_IPE_BPS_UBWC_ENCODE_ERROR    : Triggered if any error
  *                                                   detected in the IPE/BPS
  *                                                   UBWC encoder instance
- * @CAM_CAMNOC_HW_IRQ_OFE_UBWC_WRITE_ENCODE_ERROR  : Triggered if any error
- *                                                   detected in the OFE write
- *                                                   path enconder instance
- * @CAM_CAMNOC_HW_IRQ_OFE_UBWC_READ_DECODE_ERROR   : Triggered if any error
- *                                                   detected in the OFE read
- *                                                   path enconder instance
- * @CAM_CAMNOC_HW_IRQ_TFE_UBWC_ENCODE_ERROR        : Triggered if any error
- *                                                   detected in the TFE
- *                                                   UBWC enconder instance
  * @CAM_CAMNOC_HW_IRQ_RESERVED1                    : Reserved
  * @CAM_CAMNOC_HW_IRQ_RESERVED2                    : Reserved
  * @CAM_CAMNOC_HW_IRQ_CAMNOC_TEST                  : To test the IRQ logic
@@ -111,12 +102,6 @@ enum cam_camnoc_hw_irq_type {
 		CAM_CAMNOC_IRQ_IPE_BPS_UBWC_DECODE_ERROR,
 	CAM_CAMNOC_HW_IRQ_IPE_BPS_UBWC_ENCODE_ERROR =
 		CAM_CAMNOC_IRQ_IPE_BPS_UBWC_ENCODE_ERROR,
-	CAM_CAMNOC_HW_IRQ_OFE_UBWC_WRITE_ENCODE_ERROR =
-		CAM_CAMNOC_IRQ_OFE_WR_UBWC_ENCODE_ERROR,
-	CAM_CAMNOC_HW_IRQ_OFE_UBWC_READ_DECODE_ERROR =
-		CAM_CAMNOC_IRQ_OFE_RD_UBWC_DECODE_ERROR,
-	CAM_CAMNOC_HW_IRQ_TFE_UBWC_ENCODE_ERROR =
-		CAM_CAMNOC_IRQ_TFE_UBWC_ENCODE_ERROR,
 	CAM_CAMNOC_HW_IRQ_AHB_TIMEOUT =
 		CAM_CAMNOC_IRQ_AHB_TIMEOUT,
 	CAM_CAMNOC_HW_IRQ_RESERVED1,
@@ -174,7 +159,6 @@ enum cam_camnoc_hw_irq_type {
  * @CAM_CAMNOC_TFE_2: Indicates TFE2 HW connection to camnoc
  * @CAM_CAMNOC_OPE: Indicates OPE HW connection to camnoc
  */
- /* Deprecated, do not use this anymore. port_name serves the purpose instead of this */
 enum cam_camnoc_port_type {
 	CAM_CAMNOC_CDM,
 	CAM_CAMNOC_SFE_RD,
@@ -208,19 +192,10 @@ enum cam_camnoc_port_type {
 	CAM_CAMNOC_JPEG,
 	CAM_CAMNOC_FD,
 	CAM_CAMNOC_ICP,
-	CAM_CAMNOC_TFE_BAYER_STATS,
-	CAM_CAMNOC_TFE_BAYER_STATS_1,
-	CAM_CAMNOC_TFE_BAYER_STATS_2,
-	CAM_CAMNOC_TFE_RAW,
-	CAM_CAMNOC_TFE_RAW_1,
-	CAM_CAMNOC_TFE_RAW_2,
 	CAM_CAMNOC_TFE,
 	CAM_CAMNOC_TFE_1,
 	CAM_CAMNOC_TFE_2,
 	CAM_CAMNOC_OPE,
-	CAM_CAMNOC_OPE_BPS_WR,
-	CAM_CAMNOC_OPE_BPS_CDM_RD,
-	CAM_CAMNOC_CRE,
 	CAM_CAMNOC_IFE01234_RDI_WRITE,
 	CAM_CAMNOC_IFE01_NRDI_WRITE,
 	CAM_CAMNOC_IFE2_NRDI_WRITE,
@@ -242,7 +217,6 @@ enum cam_camnoc_port_type {
  * @qosgen_shaping_low: qosgen shaping low configuration for this connection
  * @qosgen_shaping_high: qosgen shaping high configuration for this connection
  * @maxwr_low: maxwr low configuration for this connection
- * @dynattr_mainctl: Dynamic attribute main control register for this connection
  *
  */
 struct cam_camnoc_specific {
@@ -260,7 +234,6 @@ struct cam_camnoc_specific {
 	struct cam_cpas_reg qosgen_shaping_low;
 	struct cam_cpas_reg qosgen_shaping_high;
 	struct cam_cpas_reg maxwr_low;
-	struct cam_cpas_reg dynattr_mainctl;
 };
 
 /**
@@ -330,12 +303,10 @@ struct cam_cpas_subpart_info {
  *         camnoc slave pending transactions before turning off CPAS_TOP gdsc
  * @tcsr_camera_hf_sf_ares_glitch: Errata workaround info from ignoring
  *         erroneous signals at camera start
- * @enable_icp_clk_for_qchannel: Need to enable ICP clk while qchannel handshake
  */
 struct cam_cpas_hw_errata_wa_list {
 	struct cam_cpas_hw_errata_wa camnoc_flush_slave_pending_trans;
 	struct cam_cpas_hw_errata_wa tcsr_camera_hf_sf_ares_glitch;
-	struct cam_cpas_hw_errata_wa enable_icp_clk_for_qchannel;
 };
 
 /**
@@ -367,99 +338,36 @@ struct cam_camnoc_err_logger_info {
 };
 
 /**
- * struct cam_cpas_test_irq_info : CAMNOC Test IRQ mask information
- *
- * @sbm_enable_mask: sbm mask to enable camnoc test irq
- * @sbm_clear_mask: sbm mask to clear camnoc test irq
- *
+ * struct cam_camnoc_fifo_lvl_info : Struct for fifo fill level registers
+ * @IFE0_nRDI_maxwr_offset: Register offset for fill level for IFE0
+ * @IFE1_nRDI_maxwr_offset: Register offset for fill level for IFE1
+ * @IFE0123_RDI_maxwr_low_offset: Register offset for RDI
+ * @ife_linear: Register offset for ife linear
+ * @ife_rdi_wr: Register offset for rdi wr
+ * @ife_ubwc_stats: Register offset for ubwc stats
+ * @IFE02_MAXWR_LOW: Register offset for IFE02
+ * @IFE13_MAXWR_LOW: Register offset for IFE13
+ * @IFE01_MAXWR_LOW: Register offset for IFE01
+ * @IFE23_MAXWR_LOW: Register offset for IFE23
  */
-struct cam_cpas_test_irq_info {
-	uint32_t sbm_enable_mask;
-	uint32_t sbm_clear_mask;
-};
-
-/**
- * struct cam_cpas_cesta_crm_type : CESTA crm type information
- *
- * @CAM_CESTA_CRMB: CRM for bandwidth
- * @CAM_CESTA_CRMC: CRM for clocks
- *
- */
-enum cam_cpas_cesta_crm_type {
-	CAM_CESTA_CRMB = 0,
-	CAM_CESTA_CRMC,
-};
-
-/**
- * struct cam_vcd_info : cpas vcd(virtual clk domain) information
- *
- * @vcd_index: vcd number of each clk
- * @type: type of clk domain CESTA_CRMB, CESTA_CRMC
- * @clk_name: name of each vcd clk, exmp: cam_cc_ife_0_clk_src
- *
- */
-struct cam_cpas_vcd_info {
-	uint8_t index;
-	enum cam_cpas_cesta_crm_type type;
-	const char *clk;
-};
-
-/**
- * struct cam_cpas_cesta_vcd_curr_lvl : cesta vcd operating level information
- *
- * @reg_offset: register offset
- * @vcd_base_inc: each vcd base addr offset
- * @num_vcds: number of vcds
- *
- */
-struct cam_cpas_cesta_vcd_curr_lvl {
-	uint32_t reg_offset;
-	uint32_t vcd_base_inc;
-	uint8_t num_vcds;
-};
-
-/**
- * struct cam_cpas_cesta_vcd_reg_info : to hold all cesta register information
- *
- * @vcd_currol: vcd current perf level reg info
- *
- */
-struct cam_cpas_cesta_vcd_reg_info {
-	struct cam_cpas_cesta_vcd_curr_lvl vcd_currol;
-};
-
-/**
- * struct cam_cpas_cesta_info : to hold all cesta register information
- *
- * @vcd_info: vcd info
- * @num_vcds: number of vcds
- * @cesta_reg_info: cesta vcds reg info
- *
- */
-struct cam_cpas_cesta_info {
-	struct cam_cpas_vcd_info *vcd_info;
-	int num_vcds;
-	struct cam_cpas_cesta_vcd_reg_info *cesta_reg_info;
-};
-
-/**
- * struct cam_cpas_hw_cap_info : CPAS Hardware capability information
- *
- * @num_caps_registers: number of hw capability registers
- * @hw_caps_offsets: array of hw cap register offsets
- *
- */
-struct cam_cpas_hw_cap_info {
-	uint32_t num_caps_registers;
-	uint32_t hw_caps_offsets[CAM_CPAS_MAX_CAPS_REGS];
+struct cam_camnoc_fifo_lvl_info {
+	uint32_t IFE0_nRDI_maxwr_offset;
+	uint32_t IFE1_nRDI_maxwr_offset;
+	uint32_t IFE0123_RDI_maxwr_offset;
+	uint32_t ife_linear;
+	uint32_t ife_rdi_wr;
+	uint32_t ife_ubwc_stats;
+	uint32_t IFE02_MAXWR_LOW;
+	uint32_t IFE13_MAXWR_LOW;
+	uint32_t IFE01_MAXWR_LOW;
+	uint32_t IFE23_MAXWR_LOW;
+	uint32_t IFE0_MAXWR_LOW;
+	uint32_t IFE1_MAXWR_LOW;
 };
 
 /**
  * struct cam_camnoc_info : Overall CAMNOC settings info
  *
- * @camnoc_type: type of camnoc (RT/NRT/COMBINED)
- * @camnoc_name: name of camnoc (CAMNOC_RT/CAMNOC_NRT/CAMNOC_COMBINED)
- * @reg_base: register base for camnoc RT/NRT/COMBINED register space
  * @specific: Pointer to CAMNOC SPECIFICTONTTPTR settings
  * @specific_size: Array size of SPECIFICTONTTPTR settings
  * @irq_sbm: Pointer to CAMNOC IRQ SBM settings
@@ -467,17 +375,10 @@ struct cam_cpas_hw_cap_info {
  * @irq_err_size: Array size of IRQ Error settings
  * @err_logger: Pointer to CAMNOC IRQ Error logger read registers
  * @errata_wa_list: HW Errata workaround info
- * @test_irq_info: CAMNOC Test IRQ info
- * @cesta_info: cpas cesta reg info
+ * @fill_level_register: Fill level registers
  *
  */
 struct cam_camnoc_info {
-	/* Below fields populated at probe on camera version */
-	enum cam_camnoc_hw_type camnoc_type;
-	char *camnoc_name;
-	enum cam_cpas_reg_base reg_base;
-
-	/* Below fields populated from the cpas header */
 	struct cam_camnoc_specific *specific;
 	int specific_size;
 	struct cam_camnoc_irq_sbm *irq_sbm;
@@ -485,14 +386,12 @@ struct cam_camnoc_info {
 	int irq_err_size;
 	struct cam_camnoc_err_logger_info *err_logger;
 	struct cam_cpas_hw_errata_wa_list *errata_wa_list;
-	struct cam_cpas_test_irq_info test_irq_info;
-	struct cam_cpas_cesta_info *cesta_info;
+	struct cam_camnoc_fifo_lvl_info *fill_lvl_register;
 };
 
 /**
  * struct cam_cpas_work_payload : Struct for cpas work payload data
  *
- * @camnoc_idx: index to camnoc info array
  * @hw: Pointer to HW info
  * @irq_status: IRQ status value
  * @irq_data: IRQ data
@@ -501,7 +400,6 @@ struct cam_camnoc_info {
  *
  */
 struct cam_cpas_work_payload {
-	int8_t camnoc_idx;
 	struct cam_hw_info *hw;
 	uint32_t irq_status;
 	uint32_t irq_data;
@@ -519,32 +417,6 @@ struct cam_cpas_work_payload {
 struct cam_cpas_camnoc_qchannel {
 	uint32_t qchannel_ctrl;
 	uint32_t qchannel_status;
-};
-
-/**
- * struct cam_cpas_info: CPAS information
- *
- * @qchannel_info: CPAS qchannel info
- * @hw_cap_info: CPAS Hardware capability information
- * @num_qchannel: Number of qchannel
- */
-struct cam_cpas_info {
-	struct cam_cpas_camnoc_qchannel *qchannel_info[CAM_CAMNOC_HW_TYPE_MAX];
-	struct cam_cpas_hw_cap_info hw_caps_info;
-	uint8_t num_qchannel;
-};
-
-/**
- * struct cam_cpas_top_regs : CPAS Top registers
- * @tpg_mux_sel_shift:     TPG mux select shift value
- * @tpg_mux_sel:           For selecting TPG
- * @tpg_mux_sel_enabled:   TPG mux select enabled or not
- *
- */
-struct cam_cpas_top_regs {
-	uint32_t tpg_mux_sel_shift;
-	uint32_t tpg_mux_sel;
-	bool     tpg_mux_sel_enabled;
 };
 
 #endif /* _CAM_CPASTOP_HW_H_ */

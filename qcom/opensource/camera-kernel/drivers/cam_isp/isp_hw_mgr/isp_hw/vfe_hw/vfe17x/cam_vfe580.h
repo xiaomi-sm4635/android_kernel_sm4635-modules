@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
  */
 
 
@@ -38,9 +38,6 @@ static struct cam_vfe_camif_ver3_reg_data vfe_580_camif_reg_data = {
 	.pp_camif_cfg_ife_out_en_shift   = 8,
 	.top_debug_cfg_en                = 1,
 	.dual_vfe_sync_mask              = 0x3,
-	.input_bayer_fmt                 = 0,
-	.input_yuv_fmt                   = 1,
-
 };
 
 static struct cam_vfe_camif_lite_ver3_reg_data vfe580_camif_rdi1_reg_data = {
@@ -106,15 +103,10 @@ static struct cam_vfe_top_ver3_hw_info vfe580_top_hw_info = {
 		CAM_VFE_PDLIB_VER_1_0,
 		CAM_VFE_LCR_VER_1_0,
 	},
-	.num_path_port_map = 2,
-	.path_port_map = {
-		{CAM_ISP_HW_VFE_IN_LCR, CAM_ISP_IFE_OUT_RES_LCR},
-		{CAM_ISP_HW_VFE_IN_PDLIB, CAM_ISP_IFE_OUT_RES_2PD},
-	},
 };
 
 static struct cam_vfe_hw_info cam_vfe580_hw_info = {
-	.irq_hw_info                   = &vfe480_irq_hw_info,
+	.irq_reg_info                  = &vfe480_top_irq_reg_info,
 
 	.bus_version                   = CAM_VFE_BUS_VER_3_0,
 	.bus_hw_info                   = &vfe480_bus_hw_info,

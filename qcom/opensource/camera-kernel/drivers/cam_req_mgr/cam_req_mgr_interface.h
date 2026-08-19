@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_REQ_MGR_INTERFACE_H
@@ -116,23 +115,6 @@ enum cam_pipeline_delay {
 };
 
 /**
- * enum cam_modeswitch_delay
- * @brief     : enumerator for different modeswitch delays in camera
- *
- * @DELAY_0   : device processed mode switch settings after 0 frame
- * @DELAY_1   : device processed mode switch settings after 1 frame
- * @DELAY_2   : device processed mode switch settings after 2 frames
- * @DELAY_MAX : maximum supported mode switch delay
- */
-enum cam_modeswitch_delay {
-	CAM_MODESWITCH_DELAY_0,
-	CAM_MODESWITCH_DELAY_1,
-	CAM_MODESWITCH_DELAY_2,
-	CAM_MODESWITCH_DELAY_MAX,
-};
-
-
-/**
  * @CAM_TRIGGER_POINT_SOF   : Trigger point for Start Of Frame
  * @CAM_TRIGGER_POINT_EOF   : Trigger point for End Of Frame
  * @CAM_TRIGGER_MAX_POINTS  : Maximum number of trigger point
@@ -140,14 +122,6 @@ enum cam_modeswitch_delay {
 #define CAM_TRIGGER_POINT_SOF     (1 << 0)
 #define CAM_TRIGGER_POINT_EOF     (1 << 1)
 #define CAM_TRIGGER_MAX_POINTS    2
-
-
-enum cam_req_mgr_dual_trigger {
-	CAM_REQ_DUAL_TRIGGER_NONE,
-	CAM_REQ_DUAL_TRIGGER_ONE_EXPOSURE,
-	CAM_REQ_DUAL_TRIGGER_TWO_EXPOSURE,
-	CAM_REQ_DUAL_TRIGGER_MAX,
-};
 
 /**
  * enum cam_req_status
@@ -173,7 +147,6 @@ enum cam_req_status {
  * @PAGE_FAULT : Page fault while accessing memory
  * @OVERFLOW   : Bus Overflow for IFE/VFE
  * @TIMEOUT    : Timeout from cci or bus.
- * @RECOVERY   : Internal recovery for bus overflow
  * @MAX        : Invalid error value
  */
 enum cam_req_mgr_device_error {
@@ -184,7 +157,6 @@ enum cam_req_mgr_device_error {
 	CRM_KMD_ERR_OVERFLOW,
 	CRM_KMD_ERR_TIMEOUT,
 	CRM_KMD_ERR_STOPPED,
-	CRM_KMD_WARN_INTERNAL_RECOVERY,
 	CRM_KMD_ERR_MAX,
 };
 
@@ -201,7 +173,6 @@ enum cam_req_mgr_device_error {
  * @EXTERNAL_1  : third party device
  * @EXTERNAL_2  : third party device
  * @EXTERNAL_3  : third party device
- * @TPG         : Test Pattern Generator
  * @MAX         : invalid device id
  */
 enum cam_req_mgr_device_id {
@@ -214,7 +185,6 @@ enum cam_req_mgr_device_id {
 	CAM_REQ_MGR_DEVICE_EXTERNAL_1,
 	CAM_REQ_MGR_DEVICE_EXTERNAL_2,
 	CAM_REQ_MGR_DEVICE_EXTERNAL_3,
-	CAM_REQ_MGR_DEVICE_TPG,
 	CAM_REQ_MGR_DEVICE_ID_MAX,
 };
 
@@ -222,29 +192,19 @@ enum cam_req_mgr_device_id {
 
 /**
  * enum cam_req_mgr_link_evt_type
- * @CAM_REQ_MGR_LINK_EVT_ERR               : error on the link from any of the
- *                                           connected devices
- * @CAM_REQ_MGR_LINK_EVT_PAUSE             : to pause the link
- * @CAM_REQ_MGR_LINK_EVT_RESUME            : resumes the link which was paused
- * @CAM_REQ_MGR_LINK_EVT_SOF_FREEZE        : request manager has detected an
- *                                           sof freeze
- * @CAM_REQ_MGR_LINK_EVT_STALLED           : Indicate to all connected devices
- *                                           that the pipeline is stalled.
- *                                           Devices can handle accordingly
- * @CAM_REQ_MGR_LINK_EVT_EOF               : Indicate to all connected devices
- *                                           that we get an EOF
- * @CAM_REQ_MGR_LINK_EVT_UPDATE_PROPERTIES : Notify sub devices of the properties
- *                                           updating
- * @CAM_REQ_MGR_LINK_EVT_MAX               : invalid event type
+ * @CAM_REQ_MGR_LINK_EVT_ERR             : error on the link from any of the
+ *                                         connected devices
+ * @CAM_REQ_MGR_LINK_EVT_PAUSE           : to pause the link
+ * @CAM_REQ_MGR_LINK_EVT_RESUME          : resumes the link which was paused
+ * @CAM_REQ_MGR_LINK_EVT_SOF_FREEZE      : request manager has detected an
+ *                                         sof freeze
+ * @CAM_REQ_MGR_LINK_EVT_MAX             : invalid event type
  */
 enum cam_req_mgr_link_evt_type {
 	CAM_REQ_MGR_LINK_EVT_ERR,
 	CAM_REQ_MGR_LINK_EVT_PAUSE,
 	CAM_REQ_MGR_LINK_EVT_RESUME,
 	CAM_REQ_MGR_LINK_EVT_SOF_FREEZE,
-	CAM_REQ_MGR_LINK_EVT_STALLED,
-	CAM_REQ_MGR_LINK_EVT_EOF,
-	CAM_REQ_MGR_LINK_EVT_UPDATE_PROPERTIES,
 	CAM_REQ_MGR_LINK_EVT_MAX,
 };
 
@@ -312,7 +272,6 @@ struct cam_req_mgr_error_notify {
  *                         by not sending request to devices. ex: IFE and Flash
  * @trigger_eof          : to identify that one of the device at this slot needs
  *                         to be apply at EOF
- * @num_exp              : num of exposure associated with the request
  */
 struct cam_req_mgr_add_request {
 	int32_t  link_hdl;
@@ -320,9 +279,9 @@ struct cam_req_mgr_add_request {
 	uint64_t req_id;
 	uint32_t skip_at_sof;
 	uint32_t skip_at_eof;
-	uint32_t num_exp;
 	bool     trigger_eof;
 };
+
 
 /**
  * struct cam_req_mgr_notify_stop
@@ -341,24 +300,16 @@ struct cam_req_mgr_notify_stop {
  * @name    : link link or unlink
  * @dev_id  : device id info
  * @p_delay : delay between time settings applied and take effect
- * @m_delay : delay between time modeswitch settings applied and take effect
  * @trigger : Trigger point for the client
- * @mode_switch_req : Request id on which sensor mode switch observed on the device
  * @trigger_on : This device provides trigger
- * @is_shdr : Flag to indicate auto shdr usecase without SFE
- * @is_shdr_master : Flag to indicate master dev in auto shdr usecase without SFE
  */
 struct cam_req_mgr_device_info {
 	int32_t                     dev_hdl;
 	char                        name[256];
 	enum cam_req_mgr_device_id  dev_id;
 	enum cam_pipeline_delay     p_delay;
-	enum cam_modeswitch_delay   m_delay;
 	uint32_t                    trigger;
-	uint64_t                    mode_switch_req;
 	bool                        trigger_on;
-	bool                        is_shdr;
-	bool                        is_shdr_master;
 };
 
 /**
@@ -367,7 +318,6 @@ struct cam_req_mgr_device_info {
  * @link_hdl        : link identifier
  * @dev_hdl         : device handle for reference
  * @max_delay       : max pipeline delay on this link
- * @mode_switch_max_delay : max modeswitch delay on this link
  * @crm_cb          : callback funcs to communicate with req mgr
  * @trigger_id      : Unique ID provided to the triggering device
  */
@@ -376,7 +326,6 @@ struct cam_req_mgr_core_dev_link_setup {
 	int32_t                    link_hdl;
 	int32_t                    dev_hdl;
 	enum cam_pipeline_delay    max_delay;
-	enum cam_modeswitch_delay  mode_switch_max_delay;
 	struct cam_req_mgr_crm_cb *crm_cb;
 	int32_t                    trigger_id;
 };
@@ -386,23 +335,18 @@ struct cam_req_mgr_core_dev_link_setup {
  * @link_hdl         : link identifier
  * @dev_hdl          : device handle for cross check
  * @request_id       : request id settings to apply
- * @last_applied_max_pd_req : Last applied req on highest pd dev -1 is considered invalid
  * @report_if_bubble : report to crm if failure in applying
  * @trigger_point    : the trigger point of this apply
  * @re_apply         : to skip re_apply for buf_done request
- * @recovery         : Indicate if it is recovery req
- * @dual_trigger_status : Enum to indicate status of dual trigger
+ *
  */
 struct cam_req_mgr_apply_request {
-	int32_t                       link_hdl;
-	int32_t                       dev_hdl;
-	uint64_t                      request_id;
-	int64_t                       last_applied_max_pd_req;
-	int32_t                       report_if_bubble;
-	uint32_t                      trigger_point;
-	bool                          re_apply;
-	bool                          recovery;
-	enum cam_req_mgr_dual_trigger dual_trigger_status;
+	int32_t    link_hdl;
+	int32_t    dev_hdl;
+	uint64_t   request_id;
+	int32_t    report_if_bubble;
+	uint32_t   trigger_point;
+	bool       re_apply;
 };
 
 /**
@@ -424,21 +368,15 @@ struct cam_req_mgr_flush_request {
  * struct cam_req_mgr_event_data
  * @link_hdl          : link handle
  * @req_id            : request id
- * @try_for_recovery  : Link is stalled allow subdevices to recover if
- *                      possible
  * @evt_type          : link event
- * @error             : error code
- * @properties_mask   : properties mask
  */
 struct cam_req_mgr_link_evt_data {
 	int32_t  link_hdl;
 	int32_t  dev_hdl;
 	uint64_t req_id;
-	bool     try_for_recovery;
 	enum cam_req_mgr_link_evt_type evt_type;
 	union {
 		enum cam_req_mgr_device_error error;
-		uint32_t properties_mask;
 	} u;
 };
 

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_SFE_HW_INTF_H_
@@ -12,16 +12,14 @@
 #include "cam_cpas_api.h"
 
 #define SFE_CORE_BASE_IDX           0
-#define CAM_SFE_PERF_CNT_MAX        2
-
-enum cam_sfe_core_id {
-	CAM_SFE_CORE_0,
-	CAM_SFE_CORE_1,
-	CAM_SFE_CORE_MAX,
-};
+#define SFE_RT_CDM_BASE_IDX         1
+#define CAM_SFE_HW_NUM_MAX          2
 
 enum cam_isp_hw_sfe_in {
 	CAM_ISP_HW_SFE_IN_PIX,
+	CAM_ISP_HW_SFE_IN_RD0,
+	CAM_ISP_HW_SFE_IN_RD1,
+	CAM_ISP_HW_SFE_IN_RD2,
 	CAM_ISP_HW_SFE_IN_RDI0,
 	CAM_ISP_HW_SFE_IN_RDI1,
 	CAM_ISP_HW_SFE_IN_RDI2,
@@ -38,14 +36,19 @@ enum cam_sfe_hw_irq_status {
 	CAM_SFE_IRQ_STATUS_MAX,
 };
 
+enum cam_sfe_bw_control_action {
+	CAM_SFE_BW_CONTROL_EXCLUDE,
+	CAM_SFE_BW_CONTROL_INCLUDE,
+};
+
 enum cam_sfe_hw_irq_regs {
 	CAM_SFE_IRQ_TOP_REG_STATUS0,
 	CAM_SFE_IRQ_REGISTERS_MAX,
 };
 
-enum cam_sfe_bus_wr_irq_regs {
-	CAM_SFE_IRQ_BUS_WR_REG_STATUS0,
-	CAM_SFE_BUS_WR_IRQ_REGISTERS_MAX,
+enum cam_sfe_bus_irq_regs {
+	CAM_SFE_IRQ_BUS_REG_STATUS0,
+	CAM_SFE_BUS_IRQ_REGISTERS_MAX,
 };
 
 enum cam_sfe_bus_rd_irq_regs {
@@ -54,42 +57,14 @@ enum cam_sfe_bus_rd_irq_regs {
 };
 
 /*
- * struct cam_sfe_generic_debug_config:
+ * struct cam_sfe_bw_control_args:
  *
- * @sfe_debug_cfg       : SFE debug cfg value
- * @sfe_sensor_sel      : SFE sensor sel for diag data
- * @num_counters        : Number of perf counters configured
- * @sfe_perf_counter_val: SFE perf counter values
+ * @node_res:             Resource node info
+ * @action:               Bandwidth control action
  */
-struct cam_sfe_generic_debug_config {
-	uint32_t  sfe_debug_cfg;
-	uint32_t  sfe_sensor_sel;
-	uint32_t  num_counters;
-	uint32_t  sfe_perf_counter_val[CAM_SFE_PERF_CNT_MAX];
-};
-
-/*
- * struct cam_sfe_sys_cache_debug_config:
- *
- * @sfe_cache_dbg:  SFE cache debug cfg
- */
-
-struct cam_sfe_sys_cache_debug_config {
-	uint32_t sfe_cache_dbg;
-};
-
-
-/*
- * struct cam_sfe_debug_cfg_params:
- *
- * @cache_config: If the config is for cache
- */
-struct cam_sfe_debug_cfg_params {
-	union {
-		struct cam_sfe_generic_debug_config   dbg_cfg;
-		struct cam_sfe_sys_cache_debug_config cache_cfg;
-	} u;
-	bool cache_config;
+struct cam_sfe_bw_control_args {
+	struct cam_isp_resource_node      *node_res;
+	enum cam_sfe_bw_control_action     action;
 };
 
 /*
@@ -120,12 +95,10 @@ struct cam_sfe_fe_update_args {
  *
  * @node_res:                ISP Resource
  * @clk_rate:                Clock rate requested
- * @vote_level:              DRV vote level corresponding to requested rate
  */
 struct cam_sfe_clock_update_args {
 	struct cam_isp_resource_node      *node_res;
 	uint64_t                           clk_rate;
-	uint32_t                           vote_level;
 };
 
 /*
@@ -137,29 +110,6 @@ struct cam_sfe_clock_update_args {
 struct cam_sfe_core_config_args {
 	struct cam_isp_resource_node      *node_res;
 	struct cam_isp_sfe_core_config     core_config;
-};
-
-/**
- * struct cam_isp_sfe_bus_sys_cache_config:
- *
- * @Brief:         Based on exp order rxved from userland
- *                 configure sys cache for SFE WMs & RMs
- *
- * @wr_cfg_done:   Output param to indicate if SFE
- *                 bus WR accepted these settings
- * @rd_cfg_done:   Output param to indicate if SFE
- *                 bus RD accepted these settings
- * @res:           SFE WM/RM Resource node
- * @use_cache:     If set cache configured
- * @type:          Dictates which slice ID to be used
- *
- */
-struct cam_isp_sfe_bus_sys_cache_config {
-	bool                                 wr_cfg_done;
-	bool                                 rd_cfg_done;
-	struct cam_isp_resource_node        *res;
-	bool                                 use_cache;
-	int                                  scid;
 };
 
 /*
@@ -202,19 +152,17 @@ struct cam_sfe_top_irq_evt_payload {
  * @error_type:              Identify different errors
  * @evt_id:                  IRQ event
  * @ts:                      Timestamp
- * @last_consumed_addr:      Last consumed addr for resource
  */
 struct cam_sfe_bus_wr_irq_evt_payload {
 	struct list_head           list;
 	uint32_t                   core_index;
-	uint32_t                   irq_reg_val[CAM_SFE_BUS_WR_IRQ_REGISTERS_MAX];
+	uint32_t                   irq_reg_val[CAM_SFE_BUS_IRQ_REGISTERS_MAX];
 	uint32_t                   ccif_violation_status;
 	uint32_t                   overflow_status;
 	uint32_t                   image_size_violation_status;
 	uint32_t                   error_type;
 	uint32_t                   evt_id;
 	struct cam_isp_timestamp   ts;
-	uint32_t                   last_consumed_addr;
 };
 
 /*
@@ -224,21 +172,17 @@ struct cam_sfe_bus_wr_irq_evt_payload {
  *                           BUS related to SFE resources
  *
  * @list:                    list_head node for the payload
- * @core_index:              Index of SFE HW that generated this IRQ event
  * @irq_reg_val              Bus irq register status
  * @constraint_violation     constraint violation
- * @ccif_violation:          CCIF violation
  * @error_type:              Identify different errors
  * @evt_id:                  IRQ event
  * @ts:                      Timestamp
  */
 struct cam_sfe_bus_rd_irq_evt_payload {
 	struct list_head           list;
-	uint32_t                   core_index;
 	uint32_t                   irq_reg_val[
 		CAM_SFE_BUS_RD_IRQ_REGISTERS_MAX];
 	uint32_t                   constraint_violation;
-	uint32_t                   ccif_violation;
 	uint32_t                   error_type;
 	uint32_t                   evt_id;
 	struct cam_isp_timestamp   ts;
@@ -314,8 +258,6 @@ struct cam_sfe_hw_sfe_in_acquire_args {
  * @split_id:                In case of Dual SFE, this is Left or Right.
  * @is_master:               In case of Dual SFE, this is Master or Slave.
  * @cdm_ops:                 CDM operations
- * @use_wm_pack:             Flag to indicalte packing at WM side
- * @comp_grp_id:             SFE bus comp group id
  */
 struct cam_sfe_hw_sfe_out_acquire_args {
 	struct cam_isp_resource_node         *rsrc_node;
@@ -325,8 +267,6 @@ struct cam_sfe_hw_sfe_out_acquire_args {
 	enum cam_isp_hw_split_id              split_id;
 	uint32_t                              is_master;
 	struct cam_cdm_utils_ops             *cdm_ops;
-	bool                                  use_wm_pack;
-	uint32_t                              comp_grp_id;
 };
 
 /*
@@ -374,7 +314,7 @@ void cam_sfe_get_num_hws(uint32_t *num_sfes);
  *                          successful initialization
  * @hw_idx:                 Index of SFE HW
  */
-int cam_sfe_hw_init(struct cam_isp_hw_intf_data **sfe_hw, uint32_t hw_idx);
+int cam_sfe_hw_init(struct cam_hw_intf **sfe_hw, uint32_t hw_idx);
 
 #endif /* _CAM_SFE_HW_INTF_H_ */
 

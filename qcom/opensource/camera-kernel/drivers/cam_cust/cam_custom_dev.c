@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/delay.h>
 #include <linux/io.h>
 #include <linux/of.h>
 #include <linux/module.h>
+#include <linux/ion.h>
 #include <linux/iommu.h>
 #include <linux/timer.h>
 #include <linux/kernel.h>
@@ -21,7 +22,6 @@
 #include "cam_node.h"
 #include "cam_debug_util.h"
 #include "cam_smmu_api.h"
-#include "cam_compat.h"
 #include "camera_main.h"
 
 static struct cam_custom_dev g_custom_dev;
@@ -61,7 +61,7 @@ static int cam_custom_subdev_open(struct v4l2_subdev *sd,
 	return 0;
 }
 
-static int cam_custom_subdev_close_internal(struct v4l2_subdev *sd,
+int cam_custom_subdev_close_internal(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh)
 {
 	int rc = 0;
@@ -92,7 +92,7 @@ end:
 static int cam_custom_subdev_close(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh)
 {
-	bool crm_active = cam_req_mgr_is_open();
+	bool crm_active = cam_req_mgr_is_open(CAM_CUSTOM);
 
 	if (crm_active) {
 		CAM_DBG(CAM_CUSTOM, "CRM is ACTIVE, close should be from CRM");
@@ -146,7 +146,7 @@ static int cam_custom_component_bind(struct device *dev,
 			&g_custom_dev.ctx[i],
 			&node->crm_node_intf,
 			&node->hw_mgr_intf,
-			i, iommu_hdl);
+			i);
 		if (rc) {
 			CAM_ERR(CAM_CUSTOM, "Custom context init failed!");
 			goto unregister;
@@ -160,7 +160,6 @@ static int cam_custom_component_bind(struct device *dev,
 		goto unregister;
 	}
 
-	node->sd_handler = cam_custom_subdev_close_internal;
 	cam_smmu_set_client_page_fault_handler(iommu_hdl,
 		cam_custom_dev_iommu_fault_handler, node);
 

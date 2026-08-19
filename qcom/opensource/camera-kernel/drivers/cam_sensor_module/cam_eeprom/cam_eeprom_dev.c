@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "cam_eeprom_dev.h"
@@ -11,16 +11,234 @@
 #include "cam_debug_util.h"
 #include "camera_main.h"
 #include "cam_compat.h"
+#include "qvga_sc080cs_i.h"
+#include "qvga_gc6133c_ii.h"
 
-static struct cam_i3c_eeprom_data {
-	struct cam_eeprom_ctrl_t                  *e_ctrl;
-	struct completion                          probe_complete;
-} g_i3c_eeprom_data[MAX_CAMERAS];
+static int    qvga_state = 0;
+static int    qvga_isOpen = 0;
+static int    qvga_isCreat = 0;
+static int    qvga_sensor = 0;
+static struct platform_device* pdev_qvga[2];
+static struct platform_device *pdev_qvga_true;
 
-struct completion *cam_eeprom_get_i3c_completion(uint32_t index)
+static ssize_t get_qvga_name(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	return &g_i3c_eeprom_data[index].probe_complete;
+	if(qvga_sensor == QVGA_SC080CS_I)
+	{
+		return (qvga_get_name_sc080cs(1, buf));
+	}
+	else if(qvga_sensor == QVGA_GC6133C_II)
+	{
+		return (qvga_get_name_gc6133c(1, buf));
+	}else
+	{
+		CAM_ERR(CAM_EEPROM, "torch:get name fail\n");
+		return -1;
+	}
 }
+
+static ssize_t show_qvga_lux_data(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct cam_eeprom_ctrl_t       *e_ctrl = NULL;
+	uint32_t data = 0;
+	e_ctrl = platform_get_drvdata(pdev_qvga_true);
+	if(qvga_sensor == QVGA_SC080CS_I)
+	{
+		data = get_qvga_lux_data_sc0808cs(e_ctrl);
+	}
+	else if(qvga_sensor == QVGA_GC6133C_II)
+	{
+		data = get_qvga_lux_data_gc6133c(e_ctrl);
+	}else
+	{
+		CAM_ERR(CAM_EEPROM, "torch:get data fail\n");
+	}
+	CAM_INFO(CAM_EEPROM, "torch:get data= %d\n", data);
+	return sprintf(buf, "%d\n", data);
+}
+
+static int qvga_probe(void)
+{
+	struct cam_eeprom_ctrl_t       *e_ctrl = NULL;
+	struct cam_eeprom_soc_private  *soc_private;
+	struct cam_sensor_power_ctrl_t *power_info;
+	uint32_t                       chipid;
+	uint32_t                       i;
+
+	for (i = 1; i < QVGA_NUM; i++)
+	{
+		if (QVGA_SC080CS_I == i)
+		{
+			e_ctrl = platform_get_drvdata(pdev_qvga[i - 1]);
+			soc_private = (struct cam_eeprom_soc_private *)e_ctrl->soc_info.soc_private;
+			power_info = &soc_private->power_info;
+			cam_eeprom_power_up(e_ctrl, &soc_private->power_info);
+			camera_io_dev_read(&e_ctrl->io_master_info,QVGA_SC080CS_SLAVE_ADDR_REG,&chipid, CAMERA_SENSOR_I2C_TYPE_WORD,CAMERA_SENSOR_I2C_TYPE_WORD);
+			cam_eeprom_power_down(e_ctrl);
+			if(chipid == 0x3a6c){
+				qvga_sensor = QVGA_SC080CS_I;
+				pdev_qvga_true = pdev_qvga[i - 1];
+				CAM_INFO(CAM_EEPROM, "QVGA sc080cs probesuccessfully 0x%x",chipid);
+				break;
+			}
+			else
+			{
+				CAM_ERR(CAM_EEPROM, "invaild qvga sc080cs sensor id: 0x%x", chipid);
+			}
+		}
+		else if (QVGA_GC6133C_II == i)
+		{
+			e_ctrl = platform_get_drvdata(pdev_qvga[i - 1]);
+			soc_private = (struct cam_eeprom_soc_private *)e_ctrl->soc_info.soc_private;
+			power_info = &soc_private->power_info;
+			cam_eeprom_power_up(e_ctrl, &soc_private->power_info);
+			camera_io_dev_read(&e_ctrl->io_master_info,QVGA_GC6133C_SLAVE_ADDR_REG,&chipid, CAMERA_SENSOR_I2C_TYPE_BYTE,CAMERA_SENSOR_I2C_TYPE_BYTE);
+			cam_eeprom_power_down(e_ctrl);
+			if(chipid == 0xba){
+				qvga_sensor = QVGA_GC6133C_II;
+				pdev_qvga_true = pdev_qvga[i - 1];
+				CAM_INFO(CAM_EEPROM, "QVGA gc6133c probesuccessfully 0x%x",chipid);
+				break;
+			}
+			else
+			{
+				CAM_ERR(CAM_EEPROM, "invaild qvga gc6133c sensor id: 0x%x", chipid);
+			}
+		}
+	}
+
+	if (qvga_sensor < QVGA_SC080CS_I || qvga_sensor > QVGA_NUM)
+	{
+		CAM_ERR(CAM_EEPROM, "invaild qvga index: %d", qvga_sensor);
+		return  -1;
+	}
+
+	return 0;
+}
+
+static ssize_t store_qvga_opt(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct cam_eeprom_ctrl_t       *e_ctrl = NULL;
+	struct cam_eeprom_soc_private  *soc_private;
+	struct cam_sensor_power_ctrl_t *power_info;
+	uint32_t                       chipid;
+
+	qvga_state = simple_strtol(buf, NULL, 10);
+	CAM_DBG(CAM_EEPROM, "torch:set qvga_state= %d, qvga_isOpen= %d\n", qvga_state, qvga_isOpen);
+	if (QVGA_PROBE == qvga_state)
+	{
+		if (qvga_probe())
+		{
+			CAM_ERR(CAM_EEPROM, "qvga probe fail");
+		}
+		return count;
+	}
+	
+	e_ctrl = platform_get_drvdata(pdev_qvga_true);
+
+	soc_private = (struct cam_eeprom_soc_private *)e_ctrl->soc_info.soc_private;
+	power_info = &soc_private->power_info;
+	if(qvga_sensor == QVGA_SC080CS_I)
+	{
+//SC0808CS
+#if 1
+		switch(qvga_state){
+			case QVGA_OPEN:
+				if(0 == qvga_isOpen){
+					qvga_isOpen = 1;
+					cam_eeprom_power_up(e_ctrl, power_info);
+					camera_io_dev_read(&e_ctrl->io_master_info,QVGA_SC080CS_SLAVE_ADDR_REG,&chipid, CAMERA_SENSOR_I2C_TYPE_WORD,CAMERA_SENSOR_I2C_TYPE_WORD);
+					//qvga_hw_on_reset(e_ctrl);
+					init_qvga_settinit_qvga_sc080cs(e_ctrl);
+					CAM_INFO(CAM_EEPROM, "read chipid 0x%x",chipid);
+				} else {
+					CAM_WARN(CAM_EEPROM, "QVGA power on repeatedly!");
+				}
+				break;
+			case QVGA_GET_LUX:
+				get_qvga_lux_data_sc0808cs(e_ctrl);
+				break;
+			case QVGA_CLOSE:
+			default:
+				if(1 == qvga_isOpen){
+					qvga_isOpen = 0;
+					//qvga_hw_off_reset(e_ctrl);
+					cam_eeprom_power_down(e_ctrl);
+				} else {
+					CAM_WARN(CAM_EEPROM, "QVGA power down repeatedly!");
+				}
+				break;
+		}
+#endif
+	}
+	else if(qvga_sensor == QVGA_GC6133C_II)
+	{
+//GC6133C
+#if 1
+		switch(qvga_state){
+			case QVGA_OPEN:
+				if(0 == qvga_isOpen){
+					qvga_isOpen = 1;
+					cam_eeprom_power_up(e_ctrl, power_info);
+					camera_io_dev_read(&e_ctrl->io_master_info,QVGA_GC6133C_SLAVE_ADDR_REG,&chipid, CAMERA_SENSOR_I2C_TYPE_BYTE,CAMERA_SENSOR_I2C_TYPE_BYTE);
+					qvga_hw_on_reset_gc6133c(e_ctrl);
+					init_qvga_setting_gc6133c(e_ctrl);
+					CAM_INFO(CAM_EEPROM, "read chipid 0x%x",chipid);
+				} else {
+					CAM_WARN(CAM_EEPROM, "QVGA power on repeatedly!");
+				}
+				break;
+			case QVGA_GET_LUX:
+				get_qvga_lux_data_gc6133c(e_ctrl);
+				break;
+			case QVGA_CLOSE:
+			default:
+				if(1 == qvga_isOpen){
+					qvga_isOpen = 0;
+					qvga_hw_off_reset_gc6133c(e_ctrl);
+					cam_eeprom_power_down(e_ctrl);
+				} else {
+					CAM_WARN(CAM_EEPROM, "QVGA power down repeatedly!");
+				}
+				break;
+		}
+#endif
+	}else
+	{
+		CAM_ERR(CAM_EEPROM, "qvga error\n");
+	}
+	return count;
+}
+
+static DEVICE_ATTR(rear_qvga, 0664, show_qvga_lux_data, store_qvga_opt);
+static DEVICE_ATTR(cam_name, 0444, get_qvga_name, NULL);
+
+static void cam_qvga_creat(void)
+{
+	static struct class *qvga_class;
+	static struct device *qvga_device;
+
+	qvga_class = class_create(THIS_MODULE, "qvga");   ///sys/class/qvga
+	if (IS_ERR(qvga_class)) {
+		CAM_ERR(CAM_EEPROM, "qvga Unable to create class, err = %d\n",
+			(int)PTR_ERR(qvga_class));
+		return ;
+	}
+	qvga_device =
+		device_create(qvga_class, NULL, MKDEV(0,3), NULL, QVGA_DEVNAME);  ///sys/class/qvga/qvga/
+	if (NULL == qvga_device) {
+		CAM_ERR(CAM_EEPROM, "qvga device_create fail ~");
+	}
+	if (device_create_file(qvga_device,&dev_attr_rear_qvga)) { ///sys/class/qvga/qvga/rear_qvga
+		CAM_ERR(CAM_EEPROM, "qvga device_create_file fail!\n");
+	}
+	if (device_create_file(qvga_device,&dev_attr_cam_name)) { ///sys/class/qvga/qvga/cam_name
+		CAM_ERR(CAM_EEPROM, "qvga device_create_file fail!\n");
+	}
+	return;
+}
+
+
 
 static int cam_eeprom_subdev_close_internal(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh)
@@ -43,7 +261,7 @@ static int cam_eeprom_subdev_close_internal(struct v4l2_subdev *sd,
 static int cam_eeprom_subdev_close(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh)
 {
-	bool crm_active = cam_req_mgr_is_open();
+	bool crm_active = cam_req_mgr_is_open(CAM_EEPROM);
 
 	if (crm_active) {
 		CAM_DBG(CAM_EEPROM, "CRM is ACTIVE, close should be from CRM");
@@ -189,20 +407,17 @@ static int cam_eeprom_init_subdev(struct cam_eeprom_ctrl_t *e_ctrl)
 	return rc;
 }
 
-static int cam_eeprom_i2c_component_bind(struct device *dev,
-	struct device *master_dev, void *data)
+static int cam_eeprom_i2c_driver_probe(struct i2c_client *client,
+	 const struct i2c_device_id *id)
 {
 	int                             rc = 0;
-	struct i2c_client              *client = NULL;
 	struct cam_eeprom_ctrl_t       *e_ctrl = NULL;
 	struct cam_eeprom_soc_private  *soc_private = NULL;
 	struct cam_hw_soc_info         *soc_info = NULL;
 
-	client = container_of(dev, struct i2c_client, dev);
-	if (client == NULL) {
-		CAM_ERR(CAM_OIS, "Invalid Args client: %pK",
-			client);
-		return -EINVAL;
+	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
+		CAM_ERR(CAM_EEPROM, "i2c_check_functionality failed");
+		goto probe_failure;
 	}
 
 	e_ctrl = kzalloc(sizeof(*e_ctrl), GFP_KERNEL);
@@ -249,8 +464,6 @@ static int cam_eeprom_i2c_component_bind(struct device *dev,
 	if (rc)
 		goto free_soc;
 
-	cam_sensor_module_add_i2c_device((void *) e_ctrl, CAM_SENSOR_EEPROM);
-
 	if (soc_private->i2c_info.slave_addr != 0)
 		e_ctrl->io_master_info.client->addr =
 			soc_private->i2c_info.slave_addr;
@@ -270,106 +483,56 @@ probe_failure:
 	return rc;
 }
 
-static void cam_eeprom_i2c_component_unbind(struct device *dev,
-	struct device *master_dev, void *data)
+int cam_eeprom_i2c_driver_remove_common(struct i2c_client *client)
 {
-	int                             i;
-	struct i2c_client              *client = NULL;
-	struct v4l2_subdev             *sd = NULL;
+	int rc = 0;
+	int i = 0;
+	struct v4l2_subdev             *sd = i2c_get_clientdata(client);
 	struct cam_eeprom_ctrl_t       *e_ctrl;
 	struct cam_eeprom_soc_private  *soc_private;
-	struct cam_hw_soc_info         *soc_info;
+	struct cam_hw_soc_info         *soc_info = NULL;
 
-	client = container_of(dev, struct i2c_client, dev);
-	if (!client) {
-		CAM_ERR(CAM_EEPROM,
-			"Failed to get i2c client");
-		return;
-	}
-
-	sd = i2c_get_clientdata(client);
 	if (!sd) {
 		CAM_ERR(CAM_EEPROM, "Subdevice is NULL");
-		return;
+		rc = -EINVAL;
+		return rc;
 	}
 
 	e_ctrl = (struct cam_eeprom_ctrl_t *)v4l2_get_subdevdata(sd);
 	if (!e_ctrl) {
 		CAM_ERR(CAM_EEPROM, "eeprom device is NULL");
-		return;
+		rc = -EINVAL;
+		return rc;
 	}
 
 	soc_private =
 		(struct cam_eeprom_soc_private *)e_ctrl->soc_info.soc_private;
 	if (!soc_private) {
 		CAM_ERR(CAM_EEPROM, "soc_info.soc_private is NULL");
-		return;
+		rc = -EINVAL;
+		return rc;
 	}
 
 	CAM_INFO(CAM_EEPROM, "i2c driver remove invoked");
 	soc_info = &e_ctrl->soc_info;
-	for (i = 0; i < soc_info->num_clk; i++) {
-		if (!soc_info->clk[i]) {
-			CAM_DBG(CAM_EEPROM, "%s handle is NULL skip put",
-				soc_info->clk_name[i]);
-			continue;
-		}
+	for (i = 0; i < soc_info->num_clk; i++)
 		devm_clk_put(soc_info->dev, soc_info->clk[i]);
-	}
 
 	mutex_lock(&(e_ctrl->eeprom_mutex));
 	cam_eeprom_shutdown(e_ctrl);
 	mutex_unlock(&(e_ctrl->eeprom_mutex));
 	mutex_destroy(&(e_ctrl->eeprom_mutex));
-	cam_unregister_subdev(&(e_ctrl->v4l2_dev_str));
+	rc = cam_unregister_subdev(&(e_ctrl->v4l2_dev_str));
+
+	if (rc)
+		CAM_ERR(CAM_EEPROM, "unregistering eeprom subdev is not sucessful");
+
 	kfree(soc_private);
 	v4l2_set_subdevdata(&e_ctrl->v4l2_dev_str.sd, NULL);
 	kfree(e_ctrl);
-}
-
-const static struct component_ops cam_eeprom_i2c_component_ops = {
-	.bind = cam_eeprom_i2c_component_bind,
-	.unbind = cam_eeprom_i2c_component_unbind,
-};
-
-static int cam_eeprom_i2c_driver_probe(struct i2c_client *client,
-	const struct i2c_device_id *id)
-{
-	int rc = 0;
-
-	if (client == NULL || id == NULL) {
-		CAM_ERR(CAM_EEPROM, "Invalid Args client: %pK id: %pK",
-			client, id);
-		return -EINVAL;
-	}
-
-	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
-		CAM_ERR(CAM_EEPROM, "%s :: i2c_check_functionality failed",
-			client->name);
-		return -EFAULT;
-	}
-
-	CAM_DBG(CAM_EEPROM, "Adding sensor eeprom component");
-	rc = component_add(&client->dev, &cam_eeprom_i2c_component_ops);
-	if (rc)
-		CAM_ERR(CAM_EEPROM, "failed to add component rc: %d", rc);
 
 	return rc;
 }
-
-#if KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE
-void cam_eeprom_i2c_driver_remove(struct i2c_client *client)
-{
-	component_del(&client->dev, &cam_eeprom_i2c_component_ops);
-}
-#else
-static int cam_eeprom_i2c_driver_remove(struct i2c_client *client)
-{
-	component_del(&client->dev, &cam_eeprom_i2c_component_ops);
-
-	return 0;
-}
-#endif
 
 static int cam_eeprom_spi_setup(struct spi_device *spi)
 {
@@ -466,18 +629,63 @@ static int cam_eeprom_spi_driver_probe(struct spi_device *spi)
 	return cam_eeprom_spi_setup(spi);
 }
 
+int cam_eeprom_spi_driver_remove_common(struct spi_device *sdev)
+{
+	struct v4l2_subdev             *sd = spi_get_drvdata(sdev);
+	struct cam_eeprom_ctrl_t       *e_ctrl;
+	struct cam_eeprom_soc_private  *soc_private;
+	struct cam_hw_soc_info         *soc_info;
+	int rc = 0;
+	int i = 0;
+
+	if (!sd) {
+		CAM_ERR(CAM_EEPROM, "Subdevice is NULL");
+		rc = -EINVAL;
+		return rc;
+	}
+
+	e_ctrl = (struct cam_eeprom_ctrl_t *)v4l2_get_subdevdata(sd);
+	if (!e_ctrl) {
+		CAM_ERR(CAM_EEPROM, "eeprom device is NULL");
+		rc = -EINVAL;
+		return rc;
+	}
+
+	soc_info = &e_ctrl->soc_info;
+	for (i = 0; i < soc_info->num_clk; i++)
+		devm_clk_put(soc_info->dev, soc_info->clk[i]);
+
+	mutex_lock(&(e_ctrl->eeprom_mutex));
+	cam_eeprom_shutdown(e_ctrl);
+	mutex_unlock(&(e_ctrl->eeprom_mutex));
+	mutex_destroy(&(e_ctrl->eeprom_mutex));
+	rc = cam_unregister_subdev(&(e_ctrl->v4l2_dev_str));
+
+	if (rc)
+		CAM_ERR(CAM_EEPROM, "unregistering eeprom spi subdevis unsucessful");
+
+	kfree(e_ctrl->io_master_info.spi_client);
+	e_ctrl->io_master_info.spi_client = NULL;
+	soc_private =
+		(struct cam_eeprom_soc_private *)e_ctrl->soc_info.soc_private;
+	if (soc_private) {
+		kfree(soc_private->power_info.gpio_num_info);
+		soc_private->power_info.gpio_num_info = NULL;
+		kfree(soc_private);
+		soc_private = NULL;
+	}
+	v4l2_set_subdevdata(&e_ctrl->v4l2_dev_str.sd, NULL);
+	kfree(e_ctrl);
+	return rc;
+}
+
 static int cam_eeprom_component_bind(struct device *dev,
 	struct device *master_dev, void *data)
 {
 	int32_t                         rc = 0;
-	bool                            i3c_i2c_target;
 	struct cam_eeprom_ctrl_t       *e_ctrl = NULL;
 	struct cam_eeprom_soc_private  *soc_private = NULL;
 	struct platform_device *pdev = to_platform_device(dev);
-
-	i3c_i2c_target = of_property_read_bool(pdev->dev.of_node, "i3c-i2c-target");
-	if (i3c_i2c_target)
-		return 0;
 
 	e_ctrl = kzalloc(sizeof(struct cam_eeprom_ctrl_t), GFP_KERNEL);
 	if (!e_ctrl)
@@ -526,8 +734,6 @@ static int cam_eeprom_component_bind(struct device *dev,
 	if (rc)
 		goto free_soc;
 
-	cam_sensor_module_add_i2c_device((void *) e_ctrl, CAM_SENSOR_EEPROM);
-
 	e_ctrl->bridge_intf.device_hdl = -1;
 	e_ctrl->bridge_intf.ops.get_dev_info = NULL;
 	e_ctrl->bridge_intf.ops.link_setup = NULL;
@@ -535,9 +741,23 @@ static int cam_eeprom_component_bind(struct device *dev,
 	platform_set_drvdata(pdev, e_ctrl);
 	e_ctrl->cam_eeprom_state = CAM_EEPROM_INIT;
 	CAM_DBG(CAM_EEPROM, "Component bound successfully");
-
-	g_i3c_eeprom_data[e_ctrl->soc_info.index].e_ctrl = e_ctrl;
-	init_completion(&g_i3c_eeprom_data[e_ctrl->soc_info.index].probe_complete);
+//qvga
+	if(soc_private->i2c_info.slave_addr == QVGA_SC080CS_SLAVE_ADDR){
+		if (!qvga_isCreat) {
+			cam_qvga_creat();
+			qvga_isCreat = 1;
+			CAM_INFO(CAM_EEPROM, "QVGA sc080cs Component bound successfully %x",soc_private->i2c_info.slave_addr);
+		}
+		pdev_qvga[QVGA_SC080CS_I - 1] = pdev;
+	}
+	if(soc_private->i2c_info.slave_addr == QVGA_GC6133C_SLAVE_ADDR){
+		if (!qvga_isCreat) {
+			cam_qvga_creat();
+			qvga_isCreat = 1;
+			CAM_INFO(CAM_EEPROM, "QVGA gc6133c Component bound successfully %x",soc_private->i2c_info.slave_addr);
+		}
+		pdev_qvga[QVGA_GC6133C_II - 1] = pdev;
+	}
 
 	return rc;
 free_soc:
@@ -554,14 +774,9 @@ static void cam_eeprom_component_unbind(struct device *dev,
 	struct device *master_dev, void *data)
 {
 	int                        i;
-	bool                       i3c_i2c_target;
 	struct cam_eeprom_ctrl_t  *e_ctrl;
 	struct cam_hw_soc_info    *soc_info;
 	struct platform_device *pdev = to_platform_device(dev);
-
-	i3c_i2c_target = of_property_read_bool(pdev->dev.of_node, "i3c-i2c-target");
-	if (i3c_i2c_target)
-		return;
 
 	e_ctrl = platform_get_drvdata(pdev);
 	if (!e_ctrl) {
@@ -572,14 +787,8 @@ static void cam_eeprom_component_unbind(struct device *dev,
 	CAM_DBG(CAM_EEPROM, "Component unbind called for: %s", pdev->name);
 	soc_info = &e_ctrl->soc_info;
 
-	for (i = 0; i < soc_info->num_clk; i++) {
-		if (!soc_info->clk[i]) {
-			CAM_DBG(CAM_EEPROM, "%s handle is NULL skip put",
-				soc_info->clk_name[i]);
-			continue;
-		}
+	for (i = 0; i < soc_info->num_clk; i++)
 		devm_clk_put(soc_info->dev, soc_info->clk[i]);
-	}
 
 	mutex_lock(&(e_ctrl->eeprom_mutex));
 	cam_eeprom_shutdown(e_ctrl);
@@ -637,26 +846,16 @@ struct platform_driver cam_eeprom_platform_driver = {
 };
 
 static const struct i2c_device_id cam_eeprom_i2c_id[] = {
-	{ EEPROM_DRIVER_I2C, (kernel_ulong_t)NULL},
+	{ "msm_eeprom", (kernel_ulong_t)NULL},
 	{ }
 };
 
-static const struct of_device_id cam_eeprom_i2c_dt_match[] = {
-	{ .compatible = "qcom,cam-i2c-eeprom" },
-	{ }
-};
-
-MODULE_DEVICE_TABLE(of, cam_eeprom_i2c_dt_match);
-
-struct i2c_driver cam_eeprom_i2c_driver = {
+static struct i2c_driver cam_eeprom_i2c_driver = {
 	.id_table = cam_eeprom_i2c_id,
 	.probe  = cam_eeprom_i2c_driver_probe,
 	.remove = cam_eeprom_i2c_driver_remove,
 	.driver = {
-		.name = EEPROM_DRIVER_I2C,
-		.owner = THIS_MODULE,
-		.of_match_table = cam_eeprom_i2c_dt_match,
-		.suppress_bind_attrs = true,
+		.name = "msm_eeprom",
 	},
 };
 
@@ -669,68 +868,9 @@ static struct spi_driver cam_eeprom_spi_driver = {
 	.probe = cam_eeprom_spi_driver_probe,
 	.remove = cam_eeprom_spi_driver_remove,
 };
-
-static struct i3c_device_id eeprom_i3c_id[MAX_I3C_DEVICE_ID_ENTRIES + 1];
-
-static int cam_eeprom_i3c_driver_probe(struct i3c_device *client)
-{
-	int32_t rc = 0;
-	struct cam_eeprom_ctrl_t       *e_ctrl = NULL;
-	uint32_t                        index;
-	struct device                  *dev;
-
-	if (!client) {
-		CAM_INFO(CAM_EEPROM, "Null Client pointer");
-		return -EINVAL;
-	}
-
-	dev = &client->dev;
-
-	CAM_DBG(CAM_EEPROM, "Probe for I3C Slave %s", dev_name(dev));
-
-	rc = of_property_read_u32(dev->of_node, "cell-index", &index);
-	if (rc) {
-		CAM_ERR(CAM_EEPROM, "device %s failed to read cell-index", dev_name(dev));
-		return rc;
-	}
-
-	if (index >= MAX_CAMERAS) {
-		CAM_ERR(CAM_EEPROM, "Invalid Cell-Index: %u for %s", index, dev_name(dev));
-		return -EINVAL;
-	}
-
-	e_ctrl = g_i3c_eeprom_data[index].e_ctrl;
-	if (!e_ctrl) {
-		CAM_ERR(CAM_EEPROM, "e_ctrl is null. I3C Probe before platfom driver probe for %s",
-			dev_name(dev));
-		return -EINVAL;
-	}
-
-	e_ctrl->io_master_info.i3c_client = client;
-
-	complete_all(&g_i3c_eeprom_data[index].probe_complete);
-
-	CAM_DBG(CAM_EEPROM, "I3C Probe Finished for %s", dev_name(dev));
-	return rc;
-}
-
-static struct i3c_driver cam_eeprom_i3c_driver = {
-	.id_table = eeprom_i3c_id,
-	.probe = cam_eeprom_i3c_driver_probe,
-	.remove = cam_i3c_driver_remove,
-	.driver = {
-		.owner = THIS_MODULE,
-		.name = EEPROM_DRIVER_I3C,
-		.of_match_table = cam_eeprom_dt_match,
-		.suppress_bind_attrs = true,
-	},
-};
-
 int cam_eeprom_driver_init(void)
 {
 	int rc = 0;
-	struct device_node                      *dev;
-	int num_entries = 0;
 
 	rc = platform_driver_register(&cam_eeprom_platform_driver);
 	if (rc < 0) {
@@ -742,65 +882,23 @@ int cam_eeprom_driver_init(void)
 	rc = spi_register_driver(&cam_eeprom_spi_driver);
 	if (rc < 0) {
 		CAM_ERR(CAM_EEPROM, "spi_register_driver failed rc = %d", rc);
-		goto spi_register_err;
+		return rc;
 	}
 
 	rc = i2c_add_driver(&cam_eeprom_i2c_driver);
 	if (rc < 0) {
 		CAM_ERR(CAM_EEPROM, "i2c_add_driver failed rc = %d", rc);
-		goto i2c_register_err;
+		return rc;
 	}
-
-	memset(eeprom_i3c_id, 0, sizeof(struct i3c_device_id) * (MAX_I3C_DEVICE_ID_ENTRIES + 1));
-
-	dev = of_find_node_by_path(I3C_SENSOR_DEV_ID_DT_PATH);
-	if (!dev) {
-		CAM_DBG(CAM_EEPROM, "Couldnt Find the i3c-id-table dev node");
-		return 0;
-	}
-
-	rc = cam_sensor_count_elems_i3c_device_id(dev, &num_entries,
-		"i3c-eeprom-id-table");
-	if (rc)
-		return 0;
-
-	rc = cam_sensor_fill_i3c_device_id(dev, num_entries,
-		"i3c-eeprom-id-table", eeprom_i3c_id);
-	if (rc)
-		goto i3c_register_err;
-
-	rc = i3c_driver_register_with_owner(&cam_eeprom_i3c_driver, THIS_MODULE);
-	if (rc) {
-		CAM_ERR(CAM_EEPROM, "i3c_driver registration failed, rc: %d", rc);
-		goto i3c_register_err;
-	}
-
-	return 0;
-i3c_register_err:
-	i2c_del_driver(&cam_sensor_i2c_driver);
-i2c_register_err:
-	spi_unregister_driver(&cam_eeprom_spi_driver);
-spi_register_err:
-	platform_driver_unregister(&cam_sensor_platform_driver);
 
 	return rc;
 }
 
 void cam_eeprom_driver_exit(void)
 {
-	struct device_node *dev;
-
 	platform_driver_unregister(&cam_eeprom_platform_driver);
 	spi_unregister_driver(&cam_eeprom_spi_driver);
 	i2c_del_driver(&cam_eeprom_i2c_driver);
-
-	dev = of_find_node_by_path(I3C_SENSOR_DEV_ID_DT_PATH);
-	if (!dev) {
-		CAM_DBG(CAM_EEPROM, "Couldnt Find the i3c-id-table dev node");
-		return;
-	}
-
-	i3c_driver_unregister(&cam_eeprom_i3c_driver);
 }
 
 MODULE_DESCRIPTION("CAM EEPROM driver");

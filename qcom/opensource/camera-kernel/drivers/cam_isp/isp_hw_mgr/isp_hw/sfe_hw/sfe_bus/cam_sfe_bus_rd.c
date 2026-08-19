@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/ratelimit.h>
@@ -20,7 +20,6 @@
 #include "cam_sfe_core.h"
 #include "cam_debug_util.h"
 #include "cam_cpas_api.h"
-#include "cam_common_util.h"
 
 static const char drv_name[] = "sfe_bus_rd";
 
@@ -30,7 +29,12 @@ static const char drv_name[] = "sfe_bus_rd";
 #define MAX_REG_VAL_PAIR_SIZE    \
 	(MAX_BUF_UPDATE_REG_NUM * 2 * CAM_PACKET_MAX_PLANES)
 
+#define BUS_RD_DEFAULT_LATENCY_BUF_ALLOC   512
 #define CAM_SFE_BUS_RD_PAYLOAD_MAX         16
+
+static uint32_t bus_rd_error_irq_mask[1] = {
+	0x00000001,
+};
 
 enum cam_sfe_bus_rd_unpacker_format {
 	BUS_RD_UNPACKER_FMT_PLAIN_128             = 0x0,
@@ -60,7 +64,6 @@ struct cam_sfe_bus_rd_common_data {
 	void __iomem                               *mem_base;
 	struct cam_hw_intf                         *hw_intf;
 	struct cam_sfe_bus_rd_reg_offset_common    *common_reg;
-	struct cam_hw_soc_info                     *soc_info;
 	uint32_t                                    io_buf_update[
 		MAX_REG_VAL_PAIR_SIZE];
 	void                                       *bus_irq_controller;
@@ -70,19 +73,13 @@ struct cam_sfe_bus_rd_common_data {
 	struct cam_sfe_bus_rd_irq_evt_payload       evt_payload[
 		CAM_SFE_BUS_RD_PAYLOAD_MAX];
 	cam_hw_mgr_event_cb_func                    event_cb;
-	bool                                        err_irq_subscribe;
-	uint32_t                                    sfe_debug_cfg;
-	uint32_t                                    irq_err_mask;
-
-	struct cam_sfe_bus_cache_dbg_cfg            cache_dbg_cfg;
-	bool                                        cons_chk_en_avail;
 };
 
 struct cam_sfe_bus_rd_rm_resource_data {
+	uint32_t             index;
 	struct cam_sfe_bus_rd_common_data            *common_data;
 	struct cam_sfe_bus_rd_reg_offset_bus_client  *hw_regs;
 	void                *ctx;
-	uint32_t             index;
 	uint32_t             min_vbi;
 	uint32_t             fs_mode;
 	uint32_t             hbi_count;
@@ -94,18 +91,13 @@ struct cam_sfe_bus_rd_rm_resource_data {
 	uint32_t             unpacker_cfg;
 	uint32_t             burst_len;
 	uint32_t             en_cfg;
+	uint32_t             img_addr;
 	uint32_t             input_if_cmd;
-	uint32_t             cache_cfg;
-	uint32_t             current_scid;
-	uint32_t             offset;
-	bool                 enable_caching;
-	bool                 enable_disable_cfg_done;
 };
 
 struct cam_sfe_bus_rd_data {
 	uint32_t                           bus_rd_type;
 	struct cam_sfe_bus_rd_common_data *common_data;
-	struct cam_sfe_bus_rd_priv        *bus_priv;
 
 	uint32_t                           num_rm;
 	struct cam_isp_resource_node      *rm_res[PLANE_MAX];
@@ -116,6 +108,7 @@ struct cam_sfe_bus_rd_data {
 	void                              *priv;
 	uint32_t                           secure_mode;
 	uint32_t                           fs_sync_enable;
+	uint32_t                           fs_line_sync_en;
 	bool                               is_offline;
 };
 
@@ -128,13 +121,11 @@ struct cam_sfe_bus_rd_priv {
 		CAM_SFE_BUS_RD_MAX_CLIENTS];
 	struct cam_isp_resource_node  sfe_bus_rd[
 		CAM_SFE_BUS_RD_MAX];
-	struct cam_sfe_bus_rd_hw_info      *bus_rd_hw_info;
+
 	int                                 irq_handle;
 	int                                 error_irq_handle;
 	void                               *tasklet_info;
 	uint32_t                            top_irq_shift;
-	uint32_t                            latency_buf_allocation;
-	uint32_t                            sys_cache_default_cfg;
 };
 
 static void cam_sfe_bus_rd_pxls_to_bytes(uint32_t pxls, uint32_t fmt,
@@ -235,11 +226,11 @@ static enum cam_sfe_bus_rd_type
 	cam_sfe_bus_get_bus_rd_res_id(uint32_t res_type)
 {
 	switch (res_type) {
-	case CAM_ISP_SFE_IN_RD_0:
+	case CAM_ISP_HW_SFE_IN_RD0:
 		return CAM_SFE_BUS_RD_RDI0;
-	case CAM_ISP_SFE_IN_RD_1:
+	case CAM_ISP_HW_SFE_IN_RD1:
 		return CAM_SFE_BUS_RD_RDI1;
-	case CAM_ISP_SFE_IN_RD_2:
+	case CAM_ISP_HW_SFE_IN_RD2:
 		return CAM_SFE_BUS_RD_RDI2;
 	default:
 		return CAM_SFE_BUS_RD_MAX;
@@ -363,106 +354,9 @@ static int cam_sfe_bus_rd_handle_irq(
 	CAM_DBG(CAM_SFE, "Top Bus RD IRQ Received");
 
 	rc = cam_irq_controller_handle_irq(evt_id,
-		bus_priv->common_data.bus_irq_controller, CAM_IRQ_EVT_GROUP_0);
+		bus_priv->common_data.bus_irq_controller);
 
 	return (rc == IRQ_HANDLED) ? 0 : -EINVAL;
-}
-
-static int cam_sfe_bus_rd_print_dimensions(
-	enum cam_sfe_bus_rd_type     bus_rd_res_id,
-	struct cam_sfe_bus_rd_priv  *bus_rd_priv)
-{
-	int i;
-	struct cam_isp_resource_node           *rsrc_node = NULL;
-	struct cam_sfe_bus_rd_data             *rsrc_data = NULL;
-	struct cam_sfe_bus_rd_rm_resource_data *rm_data;
-	struct cam_sfe_bus_rd_common_data      *common_data;
-
-	rsrc_node = &bus_rd_priv->sfe_bus_rd[bus_rd_res_id];
-	rsrc_data = rsrc_node->res_priv;
-
-	for (i = 0; i < rsrc_data->num_rm; i++) {
-		rm_data = rsrc_data->rm_res[i]->res_priv;
-
-		if (!rm_data) {
-			CAM_WARN(CAM_SFE, "Unsupported SFE RD %d", bus_rd_res_id);
-			continue;
-		}
-
-		common_data = rm_data->common_data;
-		CAM_INFO(CAM_SFE,
-			"SFE: %u RD: %u res_id: 0x%x width: 0x%x height: 0x%x stride: 0x%x unpacker: 0x%x addr: 0x%x",
-			bus_rd_priv->common_data.core_index, i, rsrc_node->res_id,
-			rm_data->width, rm_data->height, rm_data->stride, rm_data->unpacker_cfg,
-			cam_io_r_mb(common_data->mem_base + rm_data->hw_regs->image_addr));
-	}
-
-	return 0;
-}
-static void cam_sfe_bus_rd_print_constraint_error(struct cam_sfe_bus_rd_priv *bus_priv,
-	uint32_t cons_err, uint8_t *rm_name)
-{
-	struct cam_sfe_bus_rd_constraint_error_info *cons_err_info;
-	int i;
-
-	cons_err_info = bus_priv->bus_rd_hw_info->constraint_error_info;
-	for (i = 0; i < cons_err_info->num_cons_err; i++) {
-		if (cons_err_info->constraint_error_list[i].bitmask &
-			cons_err)
-			CAM_ERR(CAM_SFE, "RM: %s Error_desc: %s", rm_name,
-				cons_err_info->constraint_error_list[i].error_desc);
-	}
-}
-
-static void cam_sfe_bus_rd_get_constraint_error(struct cam_sfe_bus_rd_priv *bus_priv,
-	uint32_t constraint_err_status)
-{
-	struct cam_isp_resource_node *sfe_bus_rd = NULL;
-	struct cam_sfe_bus_rd_data   *sfe_bus_rd_data = NULL;
-	struct cam_sfe_bus_rd_rm_resource_data *rm_rsrc_data = NULL;
-	uint32_t bus_rd_resc_type, cons_err;
-	uint8_t *rm_name;
-	int i, j;
-
-	for (i = 0; i < bus_priv->num_bus_rd_resc; i++) {
-		bus_rd_resc_type =
-			bus_priv->bus_rd_hw_info->sfe_bus_rd_info[i].sfe_bus_rd_type;
-		if (bus_rd_resc_type < 0 ||
-			bus_rd_resc_type >= CAM_SFE_BUS_RD_MAX) {
-			CAM_ERR(CAM_SFE, "Invalid SFE RD resource type:%d",
-				bus_rd_resc_type);
-			return;
-		}
-
-		sfe_bus_rd = &bus_priv->sfe_bus_rd[bus_rd_resc_type];
-		if (!sfe_bus_rd || !sfe_bus_rd->res_priv) {
-			CAM_DBG(CAM_ISP, "SFE bus rd:%d in resc node or data is NULL", i);
-			continue;
-		}
-
-		sfe_bus_rd_data = sfe_bus_rd->res_priv;
-		for (j = 0; j < sfe_bus_rd_data->num_rm; j++) {
-			rm_rsrc_data = sfe_bus_rd_data->rm_res[j]->res_priv;
-			if (!rm_rsrc_data)
-				continue;
-
-			if (!(constraint_err_status & BIT(rm_rsrc_data->index)))
-				continue;
-
-			rm_name = sfe_bus_rd_data->rm_res[j]->res_name;
-			cons_err = cam_io_r_mb(
-				bus_priv->common_data.mem_base +
-				rm_rsrc_data->hw_regs->debug_status_0);
-			if (!cons_err)
-				continue;
-
-			CAM_ERR(CAM_SFE,
-				"Constraint Violation bitflag: 0x%x bus rd resc type: 0x%x",
-				cons_err, bus_rd_resc_type);
-			cam_sfe_bus_rd_print_constraint_error(bus_priv,
-				cons_err, rm_name);
-		}
-	}
 }
 
 static int cam_sfe_bus_acquire_rm(
@@ -489,7 +383,7 @@ static int cam_sfe_bus_acquire_rm(
 
 	rm_res_local = &bus_rd_priv->bus_client[rm_idx];
 	if (rm_res_local->res_state != CAM_ISP_RESOURCE_STATE_AVAILABLE) {
-		CAM_DBG(CAM_SFE, "SFE:%u RM:%u res not available state:%d",
+		CAM_ERR(CAM_SFE, "SFE:%d RM:%d res not available state:%d",
 			bus_rd_priv->common_data.core_index, rm_idx,
 			rm_res_local->res_state);
 		return -EALREADY;
@@ -501,19 +395,8 @@ static int cam_sfe_bus_acquire_rm(
 	rsrc_data->ctx = ctx;
 	rsrc_data->unpacker_cfg =
 		cam_sfe_bus_get_unpacker_fmt(unpacker_fmt);
-	if (rsrc_data->unpacker_cfg == BUS_RD_UNPACKER_FMT_MAX) {
-		CAM_ERR(CAM_SFE, "SFE:%u RM:%u Invalid unpacker fmt:%u",
-			bus_rd_priv->common_data.core_index, rm_idx, unpacker_fmt);
-		return -EINVAL;
-	}
-
 	rsrc_data->latency_buf_allocation =
-		bus_rd_priv->latency_buf_allocation;
-	rsrc_data->enable_caching =  false;
-	rsrc_data->enable_disable_cfg_done = false;
-	rsrc_data->offset = 0;
-	/* Default register value */
-	rsrc_data->cache_cfg = 0x20;
+		BUS_RD_DEFAULT_LATENCY_BUF_ALLOC;
 
 	*rm_res = rm_res_local;
 
@@ -535,8 +418,6 @@ static int cam_sfe_bus_release_rm(void          *bus_priv,
 	rsrc_data->unpacker_cfg = 0;
 	rsrc_data->burst_len = 0;
 	rsrc_data->en_cfg = 0;
-	rsrc_data->enable_caching =  false;
-	rsrc_data->offset = 0;
 
 	rm_res->tasklet_info = NULL;
 	rm_res->res_state = CAM_ISP_RESOURCE_STATE_AVAILABLE;
@@ -548,50 +429,33 @@ static int cam_sfe_bus_release_rm(void          *bus_priv,
 
 static int cam_sfe_bus_start_rm(struct cam_isp_resource_node *rm_res)
 {
-	uint32_t width_in_bytes = 0;
 	struct cam_sfe_bus_rd_rm_resource_data  *rm_data;
 	struct cam_sfe_bus_rd_common_data       *common_data;
-	const uint32_t enable_cons_violation = 11 << 2;
-	uint32_t core_cfg_mask;
 
 	rm_data = rm_res->res_priv;
 	common_data = rm_data->common_data;
 
-	cam_sfe_bus_rd_pxls_to_bytes(rm_data->width,
-		rm_data->unpacker_cfg, &width_in_bytes);
-
-	cam_io_w_mb(width_in_bytes, common_data->mem_base +
+	cam_io_w_mb(rm_data->width, common_data->mem_base +
 		rm_data->hw_regs->buf_width);
 	cam_io_w_mb(rm_data->height, common_data->mem_base +
 		rm_data->hw_regs->buf_height);
-	cam_io_w_mb(rm_data->stride, common_data->mem_base +
+	cam_io_w_mb(rm_data->width, common_data->mem_base +
 		rm_data->hw_regs->stride);
 	cam_io_w_mb(rm_data->unpacker_cfg, common_data->mem_base +
 		rm_data->hw_regs->unpacker_cfg);
 	cam_io_w_mb(rm_data->latency_buf_allocation, common_data->mem_base +
 		rm_data->hw_regs->latency_buf_allocation);
-
-	/* Ignore if already configured via CDM */
-	if (!rm_data->enable_disable_cfg_done) {
-		core_cfg_mask = CAM_SFE_BUS_RD_EN_CLIENT_CFG;
-		if (common_data->cons_chk_en_avail)
-			core_cfg_mask |= CAM_SFE_BUS_RD_EN_CONS_CHK_CFG;
-		cam_io_w_mb(core_cfg_mask,
-			common_data->mem_base + rm_data->hw_regs->cfg);
-	}
-
-	/* Enable constraint error detection */
-	cam_io_w_mb(enable_cons_violation,
-		common_data->mem_base + rm_data->hw_regs->debug_status_cfg);
+	cam_io_w_mb(0x1, common_data->mem_base + rm_data->hw_regs->cfg);
 
 	rm_res->res_state = CAM_ISP_RESOURCE_STATE_STREAMING;
 
 	CAM_DBG(CAM_SFE,
-		"Start SFE:%d RM:%d offset:0x%X width:%d [in bytes: %u] height:%d unpack_fmt:%d stride:%d latency_buf_alloc:%u",
+		"Start SFE:%d RM:%d offset:0x%X en_cfg:0x%X width:%d height:%d",
 		rm_data->common_data->core_index, rm_data->index,
-		rm_data->offset, rm_data->width, width_in_bytes,
-		rm_data->height, rm_data->unpacker_cfg, rm_data->stride,
-		rm_data->latency_buf_allocation);
+		(uint32_t) rm_data->hw_regs->cfg, rm_data->en_cfg,
+		rm_data->width, rm_data->height);
+	CAM_DBG(CAM_SFE, "RM:%d pk_fmt:%d stride:%d", rm_data->index,
+		rm_data->unpacker_cfg, rm_data->stride);
 
 	return 0;
 }
@@ -607,7 +471,6 @@ static int cam_sfe_bus_stop_rm(struct cam_isp_resource_node *rm_res)
 	cam_io_w_mb(0x0, common_data->mem_base + rsrc_data->hw_regs->cfg);
 
 	rm_res->res_state = CAM_ISP_RESOURCE_STATE_RESERVED;
-	rsrc_data->enable_disable_cfg_done = false;
 
 	CAM_DBG(CAM_SFE, "SFE:%d RM:%d stopped",
 		rsrc_data->common_data->core_index, rsrc_data->index);
@@ -621,7 +484,6 @@ static int cam_sfe_bus_init_rm_resource(uint32_t index,
 	struct cam_isp_resource_node   *rm_res)
 {
 	struct cam_sfe_bus_rd_rm_resource_data *rsrc_data;
-	uint8_t *name;
 
 	rsrc_data = kzalloc(sizeof(struct cam_sfe_bus_rd_rm_resource_data),
 		GFP_KERNEL);
@@ -642,10 +504,6 @@ static int cam_sfe_bus_init_rm_resource(uint32_t index,
 	rm_res->start = cam_sfe_bus_start_rm;
 	rm_res->stop = cam_sfe_bus_stop_rm;
 	rm_res->hw_intf = bus_rd_priv->common_data.hw_intf;
-	name = bus_rd_priv->bus_rd_hw_info->bus_client_reg[index].name;
-	if (name)
-		scnprintf(rm_res->res_name, CAM_ISP_RES_NAME_LEN,
-			"%s", name);
 
 	return 0;
 }
@@ -673,82 +531,7 @@ static int cam_sfe_bus_deinit_rm_resource(
 	return 0;
 }
 
-static int cam_sfe_bus_rd_out_done_top_half(
-	uint32_t evt_id,
-	struct cam_irq_th_payload *th_payload)
-{
-	int32_t                                 rc = 0, i;
-	struct cam_isp_resource_node           *sfe_rd = NULL;
-	struct cam_sfe_bus_rd_data             *rsrc_data = NULL;
-	struct cam_sfe_bus_rd_irq_evt_payload  *evt_payload;
-
-	sfe_rd = th_payload->handler_priv;
-	if (!sfe_rd) {
-		CAM_ERR_RATE_LIMIT(CAM_SFE, "No SFE RD resource");
-		return -ENODEV;
-	}
-
-	rsrc_data = sfe_rd->res_priv;
-
-	CAM_DBG(CAM_SFE, "SFE:%d Bus IRQ status_0: 0x%X",
-		rsrc_data->common_data->core_index,
-		th_payload->evt_status_arr[0]);
-
-	rc  = cam_sfe_bus_rd_get_evt_payload(rsrc_data->common_data,
-			&evt_payload);
-	if (rc) {
-		CAM_INFO_RATE_LIMIT(CAM_SFE,
-			"Failed to get payload for SFE:%d Bus IRQ status_0: 0x%X status_1: 0x%X",
-			rsrc_data->common_data->core_index,
-			th_payload->evt_status_arr[0]);
-		return rc;
-	}
-
-	cam_isp_hw_get_timestamp(&evt_payload->ts);
-
-	evt_payload->core_index = rsrc_data->common_data->core_index;
-	evt_payload->evt_id = evt_id;
-
-	for (i = 0; i < th_payload->num_registers; i++)
-		evt_payload->irq_reg_val[i] = th_payload->evt_status_arr[i];
-
-	th_payload->evt_payload_priv = evt_payload;
-	return rc;
-}
-
-static int cam_sfe_bus_rd_out_done_bottom_half(
-	void                *handler_priv,
-	void                *evt_payload_priv)
-{
-	int                                    rc = -EINVAL;
-	uint32_t                               status = 0;
-	struct cam_isp_resource_node          *sfe_rd = handler_priv;
-	struct cam_sfe_bus_rd_data            *rsrc_data = sfe_rd->res_priv;
-	struct cam_sfe_bus_rd_irq_evt_payload *evt_payload = evt_payload_priv;
-
-	status = evt_payload->irq_reg_val[CAM_SFE_IRQ_BUS_RD_REG_STATUS0];
-	cam_sfe_bus_rd_put_evt_payload(rsrc_data->common_data, &evt_payload);
-
-	if (status & CAM_SFE_BUS_RD_IRQ_RUP_DONE)
-		CAM_DBG(CAM_SFE, "Received SFE:%d BUS RD RUP",
-			rsrc_data->common_data->core_index);
-
-	if (status & CAM_SFE_BUS_RD_IRQ_RD0_BUF_DONE)
-		CAM_DBG(CAM_SFE, "Received SFE:%d BUS RD0 BUF DONE",
-			rsrc_data->common_data->core_index);
-
-	if (status & CAM_SFE_BUS_RD_IRQ_RD1_BUF_DONE)
-		CAM_DBG(CAM_SFE, "Received SFE:%d BUS RD1 BUF DONE",
-			rsrc_data->common_data->core_index);
-
-	if (status & CAM_SFE_BUS_RD_IRQ_RD2_BUF_DONE)
-		CAM_DBG(CAM_SFE, "Received SFE:%d BUS RD2 BUF DONE",
-			rsrc_data->common_data->core_index);
-
-	return rc;
-}
-
-static int cam_sfe_bus_rd_handle_err_irq_top_half(uint32_t evt_id,
+static int cam_sfe_bus_rd_handle_irq_top_half(uint32_t evt_id,
 	struct cam_irq_th_payload *th_payload)
 {
 	int i, rc = 0;
@@ -772,75 +555,30 @@ static int cam_sfe_bus_rd_handle_err_irq_top_half(uint32_t evt_id,
 	evt_payload->constraint_violation = cam_io_r_mb(
 		bus_priv->common_data.mem_base +
 		bus_priv->common_data.common_reg->cons_violation_status);
-
-	if (bus_priv->common_data.irq_err_mask
-		& CAM_SFE_BUS_RD_IRQ_CCIF_VIOLATION) {
-		evt_payload->ccif_violation = cam_io_r_mb(
-			bus_priv->common_data.mem_base +
-			bus_priv->common_data.common_reg->ccif_violation_status);
+	if (evt_payload->constraint_violation) {
+		CAM_ERR(CAM_SFE, "SFE:%d constraint violation:0x%x",
+			bus_priv->common_data.core_index,
+			evt_payload->constraint_violation);
+		cam_irq_controller_disable_irq(
+			bus_priv->common_data.bus_irq_controller,
+			 bus_priv->error_irq_handle);
+		cam_irq_controller_clear_and_mask(evt_id,
+			bus_priv->common_data.bus_irq_controller);
 	}
-	cam_irq_controller_disable_all(bus_priv->common_data.bus_irq_controller);
 
 	cam_isp_hw_get_timestamp(&evt_payload->ts);
 	th_payload->evt_payload_priv = evt_payload;
 	return 0;
 }
 
-static int cam_sfe_bus_rd_get_err_port_info(struct cam_sfe_bus_rd_priv *bus_priv,
-	uint32_t err_status, void **rsrc_data_priv, uint32_t *err_res_id)
-{
-	struct cam_sfe_bus_rd_rm_resource_data *rm_rsrc_data;
-	struct cam_isp_resource_node           *sfe_bus_rd;
-	struct cam_sfe_bus_rd_data             *sfe_bus_rd_data;
-	uint32_t bus_rd_resc_type;
-	int i, j;
-
-	for (i = 0; i < bus_priv->num_bus_rd_resc; i++) {
-		bus_rd_resc_type =
-			bus_priv->bus_rd_hw_info->sfe_bus_rd_info[i].sfe_bus_rd_type;
-		if (bus_rd_resc_type < 0 ||
-			(bus_rd_resc_type >= CAM_SFE_BUS_RD_MAX)) {
-			CAM_ERR(CAM_SFE, "Invalid SFE RD resource type:%d",
-				bus_rd_resc_type);
-			return -EINVAL;
-		}
-
-		sfe_bus_rd = &bus_priv->sfe_bus_rd[bus_rd_resc_type];
-		if (!sfe_bus_rd || !sfe_bus_rd->res_priv)
-			continue;
-
-		if (sfe_bus_rd->res_state != CAM_ISP_RESOURCE_STATE_STREAMING)
-			continue;
-
-		sfe_bus_rd_data = sfe_bus_rd->res_priv;
-		*rsrc_data_priv = sfe_bus_rd_data->priv;
-		for (j = 0; j < sfe_bus_rd_data->num_rm; j++) {
-			rm_rsrc_data = sfe_bus_rd_data->rm_res[j]->res_priv;
-			if (!rm_rsrc_data)
-				continue;
-
-			if (err_status & BIT(rm_rsrc_data->index)) {
-				*err_res_id = sfe_bus_rd->res_id;
-				return 0;
-			}
-		}
-	}
-	return 0;
-}
-
-static int cam_sfe_bus_rd_handle_err_irq_bottom_half(
+static int cam_sfe_bus_rd_handle_irq_bottom_half(
 	void  *handler_priv, void *evt_payload_priv)
 {
-	int rc = 0;
-	struct cam_sfe_bus_rd_irq_evt_payload  *evt_payload;
-	struct cam_sfe_bus_rd_priv             *bus_priv;
-	struct cam_sfe_bus_rd_common_data      *common_data = NULL;
-	struct cam_isp_hw_event_info            evt_info;
-	struct cam_isp_hw_error_event_info      err_evt_info;
-	uint32_t status = 0;
-	uint32_t violation_status = 0;
-	void *rsrc_data_priv = NULL;
-	uint32_t bus_rd_res_id = CAM_SFE_BUS_RD_MAX;
+	struct cam_sfe_bus_rd_irq_evt_payload *evt_payload;
+	struct cam_sfe_bus_rd_priv            *bus_priv;
+	struct cam_sfe_bus_rd_common_data     *common_data = NULL;
+	struct cam_isp_hw_event_info           evt_info;
+	uint32_t status = 0, constraint_violation = 0;
 
 	if (!handler_priv || !evt_payload_priv)
 		return -EINVAL;
@@ -849,110 +587,40 @@ static int cam_sfe_bus_rd_handle_err_irq_bottom_half(
 	evt_payload = (struct cam_sfe_bus_rd_irq_evt_payload *)evt_payload_priv;
 	common_data = &bus_priv->common_data;
 	status = evt_payload->irq_reg_val[CAM_SFE_IRQ_BUS_RD_REG_STATUS0];
-
-	if (!(status & bus_priv->common_data.irq_err_mask))
-		return 0;
-
-	if (status & CAM_SFE_BUS_RD_IRQ_CONS_VIOLATION) {
-		CAM_ERR(CAM_SFE, "SFE:[%d] status 0x%x Constraint Violation status 0x%x",
-			bus_priv->common_data.core_index, status,
-			evt_payload->constraint_violation);
-		cam_sfe_bus_rd_get_constraint_error(bus_priv,
-			evt_payload->constraint_violation);
-	}
-
-	if (status & CAM_SFE_BUS_RD_IRQ_CCIF_VIOLATION)
-		CAM_ERR(CAM_SFE, "SFE:[%d] status 0x%x CCIF Violation status 0x%x",
-			bus_priv->common_data.core_index, status,
-			evt_payload->ccif_violation);
-
-	violation_status = evt_payload->constraint_violation |
-		evt_payload->ccif_violation;
-
+	constraint_violation = evt_payload->constraint_violation;
 	cam_sfe_bus_rd_put_evt_payload(common_data, &evt_payload);
 
-	rc = cam_sfe_bus_rd_get_err_port_info(bus_priv, violation_status,
-			&rsrc_data_priv, &bus_rd_res_id);
-	if (rc < 0)
-		CAM_ERR(CAM_SFE, "Failed to get err port info, violation_status = %d",
-			violation_status);
-
-	if (!common_data->event_cb)
-		return 0;
-
-	evt_info.hw_type = CAM_ISP_HW_TYPE_SFE;
-	evt_info.hw_idx = bus_priv->common_data.core_index;
-	evt_info.res_type = CAM_ISP_RESOURCE_SFE_RD;
-	evt_info.res_id = bus_rd_res_id;
-	err_evt_info.err_type = CAM_SFE_IRQ_STATUS_VIOLATION;
-	evt_info.event_data = (void *)&err_evt_info;
-
-	if (!rsrc_data_priv) {
-		CAM_WARN(CAM_SFE,
-			"SFE:[%d] bus rd error notification failed, cb data is NULL",
+	if (status & 0x2)
+		CAM_DBG(CAM_SFE, "Received SFE:%d BUS RD RUP",
 			bus_priv->common_data.core_index);
-		return -EINVAL;
+
+	if (status & 0x4)
+		CAM_DBG(CAM_SFE, "Received SFE:%d BUS RD0 BUF DONE",
+			bus_priv->common_data.core_index);
+
+	if (status & 0x8)
+		CAM_DBG(CAM_SFE, "Received SFE:%d BUS RD1 BUF DONE",
+			bus_priv->common_data.core_index);
+
+	if (status & 0x10)
+		CAM_DBG(CAM_SFE, "Received SFE:%d BUS RD2 BUF DONE",
+			bus_priv->common_data.core_index);
+
+	if (status & 0x1) {
+		CAM_ERR(CAM_SFE, "SFE:%d Constraint violation status:0x%x",
+			bus_priv->common_data.core_index,
+			constraint_violation);
+
+		evt_info.hw_idx = bus_priv->common_data.core_index;
+		evt_info.res_type = CAM_ISP_RESOURCE_SFE_RD;
+		evt_info.res_id = CAM_SFE_BUS_RD_MAX;
+		evt_info.err_type = CAM_SFE_IRQ_STATUS_VIOLATION;
+
+		if (common_data->event_cb)
+			common_data->event_cb(NULL,
+				CAM_ISP_HW_EVENT_ERROR, (void *)&evt_info);
 	}
 
-	common_data->event_cb(rsrc_data_priv,
-		CAM_ISP_HW_EVENT_ERROR, (void *)&evt_info);
-
-	return 0;
-}
-
-static int cam_sfe_bus_subscribe_error_irq(
-	struct cam_sfe_bus_rd_priv          *bus_priv)
-{
-	uint32_t sfe_top_irq_mask[CAM_SFE_IRQ_REGISTERS_MAX] = {0};
-	uint32_t bus_rd_err_irq_mask[CAM_SFE_BUS_RD_IRQ_REGISTERS_MAX] = {0};
-
-	/* Subscribe top IRQ */
-	sfe_top_irq_mask[0] = (1 << bus_priv->top_irq_shift);
-
-	bus_priv->irq_handle = cam_irq_controller_subscribe_irq(
-		bus_priv->common_data.sfe_irq_controller,
-		CAM_IRQ_PRIORITY_0,
-		sfe_top_irq_mask,
-		bus_priv,
-		cam_sfe_bus_rd_handle_irq,
-		NULL,
-		NULL,
-		NULL,
-		CAM_IRQ_EVT_GROUP_0);
-
-	if (bus_priv->irq_handle < 1) {
-		CAM_ERR(CAM_SFE,
-			"Failed to subscribe TOP IRQ for BUS RD");
-		bus_priv->irq_handle = 0;
-		return -EFAULT;
-	}
-
-	cam_irq_controller_register_dependent(bus_priv->common_data.sfe_irq_controller,
-		bus_priv->common_data.bus_irq_controller, sfe_top_irq_mask);
-
-	if (bus_priv->tasklet_info != NULL) {
-		bus_rd_err_irq_mask[0] = bus_priv->common_data.irq_err_mask;
-
-		bus_priv->error_irq_handle = cam_irq_controller_subscribe_irq(
-			bus_priv->common_data.bus_irq_controller,
-			CAM_IRQ_PRIORITY_0,
-			bus_rd_err_irq_mask,
-			bus_priv,
-			cam_sfe_bus_rd_handle_err_irq_top_half,
-			cam_sfe_bus_rd_handle_err_irq_bottom_half,
-			bus_priv->tasklet_info,
-			&tasklet_bh_api,
-			CAM_IRQ_EVT_GROUP_0);
-
-		if (bus_priv->error_irq_handle < 1) {
-			CAM_ERR(CAM_SFE, "Failed to subscribe error IRQ");
-			bus_priv->error_irq_handle = 0;
-			return -EFAULT;
-		}
-	}
-
-	bus_priv->common_data.err_irq_subscribe = true;
-	CAM_DBG(CAM_SFE, "BUS RD error irq subscribed");
 	return 0;
 }
 
@@ -1013,9 +681,8 @@ static int cam_sfe_bus_acquire_bus_rd(void *bus_priv, void *acquire_args,
 	rsrc_node->res_id = bus_rd_acquire_args->res_id;
 	rsrc_data = rsrc_node->res_priv;
 
-	CAM_DBG(CAM_SFE, "SFE:%d acquire RD type:0x%x res_id 0x%x unpacker_fmt %d",
-		rsrc_data->common_data->core_index, acq_args->rsrc_type, rsrc_node->res_id,
-		bus_rd_acquire_args->unpacker_fmt);
+	CAM_DBG(CAM_SFE, "SFE:%d acquire RD type:0x%x",
+		rsrc_data->common_data->core_index, acq_args->rsrc_type);
 
 	rsrc_data->num_rm = num_rm;
 	rsrc_node->tasklet_info = acq_args->tasklet;
@@ -1025,12 +692,6 @@ static int cam_sfe_bus_acquire_bus_rd(void *bus_priv, void *acquire_args,
 	rsrc_data->common_data->event_cb = acq_args->event_cb;
 	rsrc_data->priv = acq_args->priv;
 	rsrc_data->is_offline = bus_rd_acquire_args->is_offline;
-	rsrc_data->bus_priv = bus_rd_priv;
-
-	/* Enable FS sync for sHDR & FS */
-	if (!rsrc_data->is_offline)
-		rsrc_data->fs_sync_enable = 1;
-
 	if (!rsrc_data->secure_mode) {
 		rsrc_data->secure_mode =
 			bus_rd_acquire_args->secure_mode;
@@ -1114,13 +775,11 @@ static int cam_sfe_bus_release_bus_rd(void *bus_priv, void *release_args,
 static int cam_sfe_bus_start_bus_rd(
 	void *hw_priv, void *stop_hw_args, uint32_t arg_size)
 {
-	int rc = -1, i;
-	const uint32_t buf_done_shift = 2;
-	uint32_t bus_rd_done_irq_mask[1] = {0};
-	struct cam_isp_resource_node	  *sfe_bus_rd = NULL;
-	struct cam_sfe_bus_rd_data		  *rsrc_data = NULL;
-	struct cam_sfe_bus_rd_priv		  *bus_priv = NULL;
+	int rc = -ENODEV, i;
+	struct cam_isp_resource_node *sfe_bus_rd = NULL;
+	struct cam_sfe_bus_rd_data *rsrc_data = NULL;
 	struct cam_sfe_bus_rd_common_data *common_data = NULL;
+	uint32_t val = 0;
 
 	if (!hw_priv) {
 		CAM_ERR(CAM_SFE, "Invalid input");
@@ -1129,11 +788,9 @@ static int cam_sfe_bus_start_bus_rd(
 
 	sfe_bus_rd = (struct cam_isp_resource_node *)hw_priv;
 	rsrc_data = sfe_bus_rd->res_priv;
-	bus_priv = rsrc_data->bus_priv;
 	common_data = rsrc_data->common_data;
 
-	CAM_DBG(CAM_SFE, "SFE:%d start RD type:0x%x",
-		common_data->hw_intf->hw_idx, sfe_bus_rd->res_id);
+	CAM_DBG(CAM_SFE, "SFE:%d start RD type:0x%x", sfe_bus_rd->res_id);
 
 	if (sfe_bus_rd->res_state != CAM_ISP_RESOURCE_STATE_RESERVED) {
 		CAM_ERR(CAM_SFE, "Invalid resource state:%d",
@@ -1141,21 +798,10 @@ static int cam_sfe_bus_start_bus_rd(
 		return -EACCES;
 	}
 
-	/* subscribe error irqs */
-	if (!bus_priv->common_data.err_irq_subscribe) {
-		rc = cam_sfe_bus_subscribe_error_irq(bus_priv);
-		if (rc)
-			return rc;
-	}
-
 	if (!rsrc_data->is_offline) {
-		uint32_t if_cmd_val = (rsrc_data->fs_sync_enable <<
-			bus_priv->bus_rd_hw_info->fs_sync_shift);
-
-		cam_io_w_mb(if_cmd_val, common_data->mem_base +
+		val = (rsrc_data->fs_sync_enable << 5);
+		cam_io_w_mb(val, common_data->mem_base +
 			common_data->common_reg->input_if_cmd);
-		CAM_DBG(CAM_SFE, "SFE:%d fs_sync for RD:0x%x configured with val: 0x%x",
-			common_data->hw_intf->hw_idx, sfe_bus_rd->res_id, if_cmd_val);
 	}
 
 	if (rsrc_data->secure_mode == CAM_SECURE_MODE_SECURE)
@@ -1165,39 +811,10 @@ static int cam_sfe_bus_start_bus_rd(
 	for (i = 0; i < rsrc_data->num_rm; i++)
 		rc = cam_sfe_bus_start_rm(rsrc_data->rm_res[i]);
 
-	/* Remove after driver stabilizes */
-	common_data->sfe_debug_cfg |=
-		SFE_DEBUG_ENABLE_RD_DONE_IRQ;
+	/* TO DO Subscribe mask for buf_done */
+	if (!rc)
+		sfe_bus_rd->res_state = CAM_ISP_RESOURCE_STATE_STREAMING;
 
-	if (common_data->sfe_debug_cfg &
-		SFE_DEBUG_ENABLE_RD_DONE_IRQ) {
-
-		/* Subscribe RUP */
-		bus_rd_done_irq_mask[0] |= 0x2;
-
-		/* Subscribe buf done */
-		bus_rd_done_irq_mask[0] |=
-			(1 << (rsrc_data->bus_rd_type + buf_done_shift));
-		sfe_bus_rd->irq_handle = cam_irq_controller_subscribe_irq(
-			common_data->bus_irq_controller,
-			CAM_IRQ_PRIORITY_2,
-			bus_rd_done_irq_mask,
-			sfe_bus_rd,
-			cam_sfe_bus_rd_out_done_top_half,
-			cam_sfe_bus_rd_out_done_bottom_half,
-			sfe_bus_rd->tasklet_info,
-			&tasklet_bh_api,
-			CAM_IRQ_EVT_GROUP_0);
-
-		if (sfe_bus_rd->irq_handle < 1) {
-			CAM_ERR(CAM_SFE,
-				"Failed to subscribe RUP/BUF done IRQ");
-			sfe_bus_rd->irq_handle = 0;
-			return -EFAULT;
-		}
-	}
-
-	sfe_bus_rd->res_state = CAM_ISP_RESOURCE_STATE_STREAMING;
 	return rc;
 }
 
@@ -1207,7 +824,6 @@ static int cam_sfe_bus_stop_bus_rd(
 	int rc = 0, i;
 	struct cam_isp_resource_node *sfe_bus_rd = NULL;
 	struct cam_sfe_bus_rd_data   *rsrc_data = NULL;
-	struct cam_sfe_bus_rd_priv   *bus_priv = NULL;
 
 	if (!hw_priv) {
 		CAM_ERR(CAM_SFE, "Invalid input");
@@ -1216,7 +832,6 @@ static int cam_sfe_bus_stop_bus_rd(
 
 	sfe_bus_rd = (struct cam_isp_resource_node *)hw_priv;
 	rsrc_data = sfe_bus_rd->res_priv;
-	bus_priv = rsrc_data->bus_priv;
 
 	if (sfe_bus_rd->res_state == CAM_ISP_RESOURCE_STATE_AVAILABLE ||
 		sfe_bus_rd->res_state == CAM_ISP_RESOURCE_STATE_RESERVED) {
@@ -1230,41 +845,7 @@ static int cam_sfe_bus_stop_bus_rd(
 
 	sfe_bus_rd->res_state = CAM_ISP_RESOURCE_STATE_RESERVED;
 
-	/* Unsubscribe RUP & Buf done */
-	if (sfe_bus_rd->irq_handle) {
-		rc = cam_irq_controller_unsubscribe_irq(
-				rsrc_data->common_data->bus_irq_controller,
-				sfe_bus_rd->irq_handle);
-		if (rc)
-			CAM_ERR(CAM_SFE, "Failed to unsubscribe rup/buf done irq");
-		sfe_bus_rd->irq_handle = 0;
-	}
-
-	/* Unsubscribe error irqs */
-	if (bus_priv->common_data.err_irq_subscribe) {
-		if (bus_priv->irq_handle) {
-			rc = cam_irq_controller_unsubscribe_irq(
-					bus_priv->common_data.sfe_irq_controller,
-					bus_priv->irq_handle);
-			if (rc)
-				CAM_ERR(CAM_SFE, "Failed to unsubscribe top irq");
-			bus_priv->irq_handle = 0;
-			cam_irq_controller_unregister_dependent(
-				bus_priv->common_data.sfe_irq_controller,
-				bus_priv->common_data.bus_irq_controller);
-		}
-
-		if (bus_priv->error_irq_handle) {
-			rc = cam_irq_controller_unsubscribe_irq(
-					bus_priv->common_data.bus_irq_controller,
-					bus_priv->error_irq_handle);
-			if (rc)
-				CAM_ERR(CAM_SFE, "Failed to unsubscribe error irq");
-			bus_priv->error_irq_handle = 0;
-		}
-		bus_priv->common_data.err_irq_subscribe = false;
-	}
-
+	/* Unsubscribe mask for this wm IRQ controller */
 	CAM_DBG(CAM_SFE, "SFE:%d stopped Bus RD:0x%x",
 		rsrc_data->common_data->core_index,
 		sfe_bus_rd->res_id);
@@ -1356,140 +937,6 @@ static int cam_sfe_bus_deinit_sfe_bus_rd_resource(
 	return 0;
 }
 
-/*
- * API similar to cam_sfe_bus_rd_update_rm() with the
- * only change being config is done via AHB instead of CDM
- */
-static int cam_sfe_bus_rd_config_rm(void *priv, void *cmd_args,
-	uint32_t arg_size)
-{
-	struct cam_sfe_bus_rd_priv             *bus_priv;
-	struct cam_isp_hw_get_cmd_update       *update_buf;
-	struct cam_sfe_bus_rd_data             *sfe_bus_rd_data = NULL;
-	struct cam_sfe_bus_rd_rm_resource_data *rm_data = NULL;
-	struct cam_sfe_bus_cache_dbg_cfg       *cache_dbg_cfg = NULL;
-	uint32_t width = 0, height = 0, stride = 0, width_in_bytes = 0;
-	uint32_t i, img_addr = 0, img_offset = 0;
-	uint32_t curr_cache_cfg = 0;
-	dma_addr_t iova;
-
-	bus_priv = (struct cam_sfe_bus_rd_priv  *) priv;
-	update_buf = (struct cam_isp_hw_get_cmd_update *) cmd_args;
-	cache_dbg_cfg = &bus_priv->common_data.cache_dbg_cfg;
-
-	sfe_bus_rd_data = (struct cam_sfe_bus_rd_data *)
-		update_buf->res->res_priv;
-
-	if (!sfe_bus_rd_data) {
-		CAM_ERR(CAM_SFE, "Invalid data");
-		return -EINVAL;
-	}
-
-	CAM_DBG(CAM_SFE, "num of RM: %d scratch_buf_cfg: %s",
-		sfe_bus_rd_data->num_rm,
-		update_buf->use_scratch_cfg ? "true" : "false");
-	if (update_buf->rm_update->num_buf != sfe_bus_rd_data->num_rm) {
-		CAM_ERR(CAM_SFE,
-			"Failed! Invalid number buffers:%d required:%d",
-			update_buf->rm_update->num_buf,
-			sfe_bus_rd_data->num_rm);
-		return -EINVAL;
-	}
-
-	for (i = 0; i < sfe_bus_rd_data->num_rm; i++) {
-		rm_data = sfe_bus_rd_data->rm_res[i]->res_priv;
-
-		stride = update_buf->rm_update->stride;
-		iova = update_buf->rm_update->image_buf[i] + rm_data->offset;
-		if (rm_data->width && rm_data->height)
-		{
-			width =  rm_data->width;
-			height = rm_data->height;
-		} else {
-			width = update_buf->rm_update->width;
-			height = update_buf->rm_update->height;
-		}
-
-		if (cam_smmu_is_expanded_memory()) {
-			img_offset = CAM_36BIT_INTF_GET_IOVA_OFFSET(iova);
-			img_addr = CAM_36BIT_INTF_GET_IOVA_BASE(iova);
-		} else {
-			img_addr = iova;
-		}
-
-		/* update size register */
-		cam_sfe_bus_rd_pxls_to_bytes(width,
-			rm_data->unpacker_cfg, &width_in_bytes);
-		rm_data->height = height;
-		rm_data->width = width;
-		curr_cache_cfg = rm_data->cache_cfg;
-		rm_data->cache_cfg = bus_priv->sys_cache_default_cfg;
-		if ((!cache_dbg_cfg->disable_for_scratch) &&
-			(rm_data->enable_caching)) {
-			rm_data->cache_cfg =
-				rm_data->current_scid << 8;
-			rm_data->cache_cfg |= (3 << 4);
-			if (cache_dbg_cfg->scratch_dbg_cfg)
-				rm_data->cache_cfg |= cache_dbg_cfg->scratch_alloc;
-			else
-				rm_data->cache_cfg |= CACHE_ALLOC_FORGET;
-
-			if (cache_dbg_cfg->print_cache_cfg &&
-				(curr_cache_cfg != rm_data->cache_cfg)) {
-				CAM_INFO(CAM_SFE,
-					"SFE:%d Scratch Buff RM:%d current_scid:%d cache_cfg:0x%x",
-					rm_data->common_data->core_index,
-					rm_data->index, rm_data->current_scid, rm_data->cache_cfg);
-			}
-		}
-
-		cam_io_w_mb(rm_data->cache_cfg,
-			rm_data->common_data->mem_base +
-			rm_data->hw_regs->system_cache_cfg);
-		CAM_DBG(CAM_SFE, "SFE:%d RM:%d cache_cfg:0x%x",
-			rm_data->common_data->core_index,
-			rm_data->index, rm_data->cache_cfg);
-
-		cam_io_w_mb(width_in_bytes,
-			rm_data->common_data->mem_base +
-			rm_data->hw_regs->buf_width);
-		cam_io_w_mb(height,
-			rm_data->common_data->mem_base +
-			rm_data->hw_regs->buf_height);
-
-		CAM_DBG(CAM_SFE, "SFE:%d RM:%d width:0x%X[in bytes: 0x%x] height:0x%X",
-			rm_data->common_data->core_index,
-			rm_data->index, width, width_in_bytes, height);
-
-		rm_data->stride = stride;
-		cam_io_w_mb(stride,
-			rm_data->common_data->mem_base +
-			rm_data->hw_regs->stride);
-		CAM_DBG(CAM_SFE, "SFE:%d RM:%d image_stride:0x%X",
-			rm_data->common_data->core_index,
-			rm_data->index, stride);
-
-		cam_io_w_mb(
-			img_addr,
-			rm_data->common_data->mem_base +
-			rm_data->hw_regs->image_addr);
-
-		CAM_DBG(CAM_SFE, "SFE:%d RM:%d image_address:0x%x offset: 0x%x",
-			rm_data->common_data->core_index, rm_data->index,
-			img_addr, rm_data->offset);
-		if (cam_smmu_is_expanded_memory())
-			CAM_DBG(CAM_SFE, "SFE:%d RM:%d image address offset: 0x%x",
-				rm_data->common_data->core_index,
-				rm_data->index,
-				img_offset);
-			cam_io_w_mb(img_offset,
-				rm_data->common_data->mem_base +
-				rm_data->hw_regs->addr_cfg);
-	}
-
-	return 0;
-}
-
 static int cam_sfe_bus_rd_update_rm(void *priv, void *cmd_args,
 	uint32_t arg_size)
 {
@@ -1498,27 +945,21 @@ static int cam_sfe_bus_rd_update_rm(void *priv, void *cmd_args,
 	struct cam_buf_io_cfg                  *io_cfg = NULL;
 	struct cam_sfe_bus_rd_data             *sfe_bus_rd_data = NULL;
 	struct cam_sfe_bus_rd_rm_resource_data *rm_data = NULL;
-	struct cam_cdm_utils_ops               *cdm_util_ops;
-	struct cam_sfe_bus_cache_dbg_cfg       *cache_dbg_cfg = NULL;
 	uint32_t *reg_val_pair;
-	uint32_t num_regval_pairs = 0;
-	uint32_t width = 0, height = 0, stride = 0, width_in_bytes = 0;
-	uint32_t i, j, size = 0, img_addr = 0, img_offset = 0;
-	dma_addr_t iova;
-	uint32_t curr_cache_cfg = 0;
+	uint32_t width = 0, height = 0, stride = 0;
+	uint32_t  i, j, size = 0;
 
 	bus_priv = (struct cam_sfe_bus_rd_priv  *) priv;
-	update_buf = (struct cam_isp_hw_get_cmd_update *) cmd_args;
-	cache_dbg_cfg = &bus_priv->common_data.cache_dbg_cfg;
+	update_buf =  (struct cam_isp_hw_get_cmd_update *) cmd_args;
 
 	sfe_bus_rd_data = (struct cam_sfe_bus_rd_data *)
 		update_buf->res->res_priv;
+
 	if (!sfe_bus_rd_data || !sfe_bus_rd_data->cdm_util_ops) {
-		CAM_ERR(CAM_SFE, "Invalid data");
+		CAM_ERR(CAM_SFE, "Failed! Invalid data");
 		return -EINVAL;
 	}
 
-	cdm_util_ops = sfe_bus_rd_data->cdm_util_ops;
 	CAM_DBG(CAM_SFE, "#of RM: %d scratch_buf_cfg: %s",
 		sfe_bus_rd_data->num_rm,
 		update_buf->use_scratch_cfg ? "true" : "false");
@@ -1553,78 +994,19 @@ static int cam_sfe_bus_rd_update_rm(void *priv, void *cmd_args,
 			height = io_cfg->planes[i].height;
 		}
 
-		/* If width & height updated in blob, use that */
-		if (rm_data->width && rm_data->height) {
-			width =  rm_data->width;
-			height = rm_data->height;
-		}
-
-		iova = update_buf->rm_update->image_buf[i] + rm_data->offset;
-		if (cam_smmu_is_expanded_memory()) {
-			img_offset = CAM_36BIT_INTF_GET_IOVA_OFFSET(iova);
-			img_addr = CAM_36BIT_INTF_GET_IOVA_BASE(iova);
-		} else {
-			img_addr = iova;
-		}
-
 		/* update size register */
 		cam_sfe_bus_rd_pxls_to_bytes(width,
-			rm_data->unpacker_cfg, &width_in_bytes);
+			rm_data->unpacker_cfg, &rm_data->width);
 		rm_data->height = height;
-		rm_data->width = width;
-
-		curr_cache_cfg = rm_data->cache_cfg;
-		rm_data->cache_cfg = bus_priv->sys_cache_default_cfg;
-		if (rm_data->enable_caching) {
-			if ((cache_dbg_cfg->disable_for_scratch) &&
-				(update_buf->use_scratch_cfg))
-				goto skip_cache_cfg;
-
-			if ((cache_dbg_cfg->disable_for_buf) &&
-				(!update_buf->use_scratch_cfg))
-				goto skip_cache_cfg;
-
-			rm_data->cache_cfg =
-				rm_data->current_scid << 8;
-			rm_data->cache_cfg |= (3 << 4);
-			if ((update_buf->use_scratch_cfg) &&
-				(cache_dbg_cfg->scratch_dbg_cfg)) {
-				rm_data->cache_cfg |= cache_dbg_cfg->scratch_alloc;
-			} else if ((!update_buf->use_scratch_cfg) &&
-				(cache_dbg_cfg->buf_dbg_cfg)) {
-				rm_data->cache_cfg |= cache_dbg_cfg->buf_alloc;
-			} else {
-				if (update_buf->use_scratch_cfg)
-					rm_data->cache_cfg |= CACHE_ALLOC_FORGET;
-				else
-					rm_data->cache_cfg |= CACHE_ALLOC_DEALLOC;
-			}
-
-			if (cache_dbg_cfg->print_cache_cfg &&
-				(curr_cache_cfg != rm_data->cache_cfg)) {
-				CAM_INFO(CAM_SFE, "SFE:%d RM:%d current_scid:%d cache_cfg:0x%x",
-					rm_data->common_data->core_index,
-					rm_data->index, rm_data->current_scid, rm_data->cache_cfg);
-			}
-		}
-
-skip_cache_cfg:
 
 		CAM_SFE_ADD_REG_VAL_PAIR(reg_val_pair, j,
-			rm_data->hw_regs->system_cache_cfg,
-			rm_data->cache_cfg);
-		CAM_DBG(CAM_SFE, "SFE:%d RM:%d cache_cfg:0x%x",
-			rm_data->common_data->core_index,
-			rm_data->index, reg_val_pair[j-1]);
-
+			rm_data->hw_regs->buf_width, rm_data->width);
 		CAM_SFE_ADD_REG_VAL_PAIR(reg_val_pair, j,
-			rm_data->hw_regs->buf_width, width_in_bytes);
-		CAM_SFE_ADD_REG_VAL_PAIR(reg_val_pair, j,
-			rm_data->hw_regs->buf_height, height);
-		CAM_DBG(CAM_SFE, "SFE:%d RM:%d width:0x%X [in bytes: 0x%x] height:0x%X",
+			rm_data->hw_regs->buf_height, rm_data->height);
+		CAM_DBG(CAM_SFE, "SFE:%d RM:%d width:0x%X height:0x%X",
 			rm_data->common_data->core_index,
 			rm_data->index, rm_data->width,
-			width_in_bytes, rm_data->height);
+			rm_data->height);
 
 		rm_data->stride = stride;
 		CAM_SFE_ADD_REG_VAL_PAIR(reg_val_pair, j,
@@ -1634,240 +1016,85 @@ skip_cache_cfg:
 			rm_data->index, reg_val_pair[j-1]);
 
 		CAM_SFE_ADD_REG_VAL_PAIR(reg_val_pair, j,
-			rm_data->hw_regs->image_addr, img_addr);
-		if (cam_smmu_is_expanded_memory())
-			CAM_SFE_ADD_REG_VAL_PAIR(reg_val_pair, j,
-				rm_data->hw_regs->addr_cfg, img_offset);
-		CAM_DBG(CAM_SFE, "SFE:%d RM:%d image_address:0x%x image_offset:0x%x",
-			rm_data->common_data->core_index,
-			rm_data->index, img_addr, img_offset);
-	}
-
-	num_regval_pairs = j / 2;
-	if (num_regval_pairs) {
-		size = cdm_util_ops->cdm_required_size_reg_random(
-			num_regval_pairs);
-
-		/* cdm util returns dwords, need to convert to bytes */
-		if ((size * 4) > update_buf->cmd.size) {
-			CAM_ERR(CAM_SFE,
-				"Failed! Buf size:%d insufficient, expected size:%d",
-				update_buf->cmd.size, size);
-			return -ENOMEM;
-		}
-
-		cdm_util_ops->cdm_write_regrandom(
-			update_buf->cmd.cmd_buf_addr, num_regval_pairs,
-			reg_val_pair);
-
-		/* cdm util returns dwords, need to convert to bytes */
-		update_buf->cmd.used_bytes = size * 4;
-	} else {
-		update_buf->cmd.used_bytes = 0;
-		CAM_DBG(CAM_SFE,
-			"No reg val pairs. num_rms: %u",
-			sfe_bus_rd_data->num_rm);
-	}
-
-	return 0;
-}
-
-static int cam_sfe_bus_rd_update_rm_core_cfg(
-	void *priv, void *cmd_args, uint32_t arg_size)
-{
-	struct cam_isp_hw_get_cmd_update       *cmd_update;
-	struct cam_sfe_bus_rd_data             *sfe_bus_rd_data = NULL;
-	struct cam_sfe_bus_rd_rm_resource_data *rm_data = NULL;
-	struct cam_cdm_utils_ops               *cdm_util_ops;
-	bool enable_disable;
-	uint32_t *reg_val_pair;
-	uint32_t  num_regval_pairs = 0, i, j, size = 0;
-	uint32_t hw_cfg = 0;
-
-	cmd_update =  (struct cam_isp_hw_get_cmd_update *) cmd_args;
-	enable_disable = *(bool *)cmd_update->data;
-
-	sfe_bus_rd_data = (struct cam_sfe_bus_rd_data *)
-		cmd_update->res->res_priv;
-
-	if (!sfe_bus_rd_data) {
-		CAM_ERR(CAM_SFE, "Invalid SFE rd data: %pK",
-			sfe_bus_rd_data);
-		return -EINVAL;
-	}
-
-	if (enable_disable) {
-		hw_cfg = CAM_SFE_BUS_RD_EN_CLIENT_CFG;
-		if (sfe_bus_rd_data->common_data->cons_chk_en_avail)
-			hw_cfg |= CAM_SFE_BUS_RD_EN_CONS_CHK_CFG;
-	}
-
-	cdm_util_ops = sfe_bus_rd_data->cdm_util_ops;
-	if (!cdm_util_ops) {
-		CAM_ERR(CAM_SFE, "Invalid cdm ops: %pK",
-			cdm_util_ops);
-		return -EINVAL;
-	}
-
-	reg_val_pair = &sfe_bus_rd_data->common_data->io_buf_update[0];
-	for (i = 0, j = 0; i < sfe_bus_rd_data->num_rm; i++) {
-		if (j >= (MAX_REG_VAL_PAIR_SIZE - MAX_BUF_UPDATE_REG_NUM * 2)) {
-			CAM_ERR(CAM_SFE,
-				"reg_val_pair %d exceeds the array limit %lu",
-				j, MAX_REG_VAL_PAIR_SIZE);
-			return -ENOMEM;
-		}
-
-		rm_data = sfe_bus_rd_data->rm_res[i]->res_priv;
-		/* To avoid AHB write @ stream on */
-		rm_data->enable_disable_cfg_done = true;
-
-		CAM_SFE_ADD_REG_VAL_PAIR(reg_val_pair, j,
-			rm_data->hw_regs->cfg, hw_cfg);
-		CAM_DBG(CAM_SFE, "SFE:%d RM:%d cfg:0x%x",
+			rm_data->hw_regs->image_addr,
+			update_buf->rm_update->image_buf[i]);
+		CAM_DBG(CAM_SFE, "SFE:%d RM:%d image_address:0x%X",
 			rm_data->common_data->core_index,
 			rm_data->index, reg_val_pair[j-1]);
+		rm_data->img_addr = reg_val_pair[j-1];
 	}
 
-	num_regval_pairs = j / 2;
-	if (num_regval_pairs) {
-		size = cdm_util_ops->cdm_required_size_reg_random(
-			num_regval_pairs);
+	size = sfe_bus_rd_data->cdm_util_ops->cdm_required_size_reg_random(j/2);
 
-		/* cdm util returns dwords, need to convert to bytes */
-		if ((size * 4) > cmd_update->cmd.size) {
-			CAM_ERR(CAM_SFE,
-				"Failed! Buf size:%d insufficient, expected size:%d",
-				cmd_update->cmd.size, size);
-			return -ENOMEM;
-		}
-
-		cdm_util_ops->cdm_write_regrandom(
-			cmd_update->cmd.cmd_buf_addr, num_regval_pairs,
-			reg_val_pair);
-
-		/* cdm util returns dwords, need to convert to bytes */
-		cmd_update->cmd.used_bytes = size * 4;
-	} else {
-		cmd_update->cmd.used_bytes = 0;
-		CAM_DBG(CAM_SFE,
-			"No reg val pairs. num_rms: %u",
-			sfe_bus_rd_data->num_rm);
-	}
-
-	return 0;
-}
-
-static int cam_sfe_bus_rd_get_res_for_mid(
-	struct cam_sfe_bus_rd_priv *bus_priv,
-	void *cmd_args, uint32_t arg_size)
-{
-	struct cam_sfe_bus_rd_hw_info          *hw_info;
-	struct cam_isp_hw_get_cmd_update       *cmd_update = cmd_args;
-	struct cam_isp_hw_get_res_for_mid      *get_res = NULL;
-	int i, j;
-
-	get_res = (struct cam_isp_hw_get_res_for_mid *)cmd_update->data;
-	if (!get_res) {
+	/* cdm util returns dwords, need to convert to bytes */
+	if ((size * 4) > update_buf->cmd.size) {
 		CAM_ERR(CAM_SFE,
-			"invalid get resource for mid paramas");
-		return -EINVAL;
+			"Failed! Buf size:%d insufficient, expected size:%d",
+			update_buf->cmd.size, size);
+		return -ENOMEM;
 	}
 
-	hw_info =  bus_priv->bus_rd_hw_info;
-	for (i = 0; i < bus_priv->num_bus_rd_resc; i++) {
-		for (j = 0; j < CAM_SFE_BUS_MAX_MID_PER_PORT; j++) {
-			if (hw_info->sfe_bus_rd_info[i].mid[j] == get_res->mid)
-				goto end;
-		}
-	}
+	sfe_bus_rd_data->cdm_util_ops->cdm_write_regrandom(
+		update_buf->cmd.cmd_buf_addr, j/2, reg_val_pair);
 
-	/*
-	 * Do not update out_res_id in case of no match.
-	 * Correct value will be dumped in hw mgr
-	 */
-	if (i == bus_priv->num_bus_rd_resc) {
-		CAM_INFO(CAM_SFE, "mid:%d does not match with any read resource", get_res->mid);
-		return 0;
-	}
+	/* cdm util returns dwords, need to convert to bytes */
+	update_buf->cmd.used_bytes = size * 4;
 
-end:
-	CAM_INFO(CAM_SFE, "match mid :%d  read resource: 0x%x found",
-		get_res->mid, bus_priv->sfe_bus_rd[i].res_id);
-	get_res->out_res_id = bus_priv->sfe_bus_rd[i].res_id;
 	return 0;
 }
 
-static int cam_sfe_bus_rd_irq_inject(
-	void *priv, void *cmd_args, uint32_t arg_size)
+static int cam_sfe_bus_rd_update_fs_cfg(void *priv, void *cmd_args,
+	uint32_t arg_size)
 {
-	struct cam_sfe_bus_rd_priv          *bus_priv = NULL;
-	struct cam_hw_soc_info              *soc_info = NULL;
-	struct cam_sfe_bus_rd_hw_info       *bus_rd_hw_info = NULL;
-	struct cam_irq_controller_reg_info  *irq_reg_info = NULL;
-	struct cam_irq_register_set         *inject_reg = NULL;
-	struct cam_isp_irq_inject_param     *inject_params = NULL;
+	struct cam_sfe_bus_rd_priv              *bus_priv;
+	struct cam_sfe_bus_rd_data              *sfe_bus_rd_data = NULL;
+	struct cam_sfe_bus_rd_rm_resource_data  *rm_data = NULL;
+	struct cam_sfe_fe_update_args           *fe_upd_args;
+	struct cam_fe_config                    *fe_cfg;
+	struct cam_sfe_bus_rd_common_data       *common_data;
+	int i = 0;
 
-	if (!cmd_args) {
-		CAM_ERR(CAM_ISP, "Invalid params");
+	bus_priv = (struct cam_sfe_bus_rd_priv  *) priv;
+	fe_upd_args = (struct cam_sfe_fe_update_args *)cmd_args;
+
+	sfe_bus_rd_data = (struct cam_sfe_bus_rd_data *)
+		fe_upd_args->node_res->res_priv;
+
+	if (!sfe_bus_rd_data || !sfe_bus_rd_data->cdm_util_ops) {
+		CAM_ERR(CAM_SFE, "Failed! Invalid data");
 		return -EINVAL;
 	}
 
-	bus_priv = (struct cam_sfe_bus_rd_priv *)priv;
-	soc_info = bus_priv->common_data.soc_info;
-	bus_rd_hw_info = (struct cam_sfe_bus_rd_hw_info *)bus_priv->bus_rd_hw_info;
-	irq_reg_info = &bus_rd_hw_info->common_reg.irq_reg_info;
-	inject_reg = irq_reg_info->irq_reg_set;
-	inject_params = (struct cam_isp_irq_inject_param *)cmd_args;
+	fe_cfg = &fe_upd_args->fe_config;
 
-	if (!inject_reg) {
-		CAM_INFO(CAM_SFE, "Invalid inject_reg");
-		return -EINVAL;
-	}
+	for (i = 0; i < sfe_bus_rd_data->num_rm; i++) {
 
-	if (inject_params->reg_unit ==
-		CAM_ISP_SFE_0_BUS_RD_INPUT_IF_IRQ_SET_REG) {
-		cam_io_w_mb(inject_params->irq_mask,
-			soc_info->reg_map[SFE_CORE_BASE_IDX].mem_base +
-			inject_reg->set_reg_offset);
-		cam_io_w_mb(0x10, soc_info->reg_map[SFE_CORE_BASE_IDX].mem_base +
-			irq_reg_info->global_irq_cmd_offset);
-		CAM_INFO(CAM_SFE, "Injected : irq_mask %#x set_reg_offset %#x",
-			inject_params->irq_mask, inject_reg->set_reg_offset);
-	}
-	return 0;
-}
+		rm_data = sfe_bus_rd_data->rm_res[i]->res_priv;
+		common_data = rm_data->common_data;
 
-static int cam_sfe_bus_rd_dump_irq_desc(
-	void *priv, void *cmd_args, uint32_t arg_size)
-{
-	int                               i, offset = 0;
-	struct cam_sfe_bus_rd_priv       *bus_priv = NULL;
-	struct cam_sfe_bus_rd_hw_info    *bus_rd_hw_info = NULL;
-	struct cam_isp_irq_inject_param  *inject_params = NULL;
+		rm_data->format = fe_cfg->format;
+		rm_data->unpacker_cfg = fe_cfg->unpacker_cfg;
+		rm_data->latency_buf_allocation = fe_cfg->latency_buf_size;
+		rm_data->stride = fe_cfg->stride;
+		rm_data->hbi_count = fe_cfg->hbi_count;
+		rm_data->fs_mode = fe_cfg->fs_mode;
+		rm_data->min_vbi = fe_cfg->min_vbi;
+		sfe_bus_rd_data->fs_sync_enable =
+			fe_cfg->fs_sync_enable;
+		sfe_bus_rd_data->fs_line_sync_en =
+			fe_cfg->fs_line_sync_en;
 
-	if (!cmd_args) {
-		CAM_ERR(CAM_ISP, "Invalid params");
-		return -EINVAL;
-	}
-
-	bus_priv = (struct cam_sfe_bus_rd_priv *)priv;
-	bus_rd_hw_info = (struct cam_sfe_bus_rd_hw_info *)bus_priv->bus_rd_hw_info;
-	inject_params = (struct cam_isp_irq_inject_param *)cmd_args;
-
-	if (inject_params->reg_unit ==
-			CAM_ISP_SFE_0_BUS_RD_INPUT_IF_IRQ_SET_REG) {
-		offset += scnprintf(inject_params->line_buf + offset,
-			LINE_BUFFER_LEN - offset,
-			"Printing executable IRQ for hw_type: SFE reg_unit: %d\n",
-			inject_params->reg_unit);
-
-		for (i = 0; i < bus_rd_hw_info->num_bus_rd_errors; i++)
-			offset += scnprintf(inject_params->line_buf + offset,
-				LINE_BUFFER_LEN - offset, "%#12x : %s - %s\n",
-				bus_rd_hw_info->bus_rd_err_desc[i].bitmask,
-				bus_rd_hw_info->bus_rd_err_desc[i].err_name,
-				bus_rd_hw_info->bus_rd_err_desc[i].desc);
+		CAM_DBG(CAM_SFE,
+			"SFE:%d RM:%d format:0x%x unpacker_cfg:0x%x",
+			rm_data->format, rm_data->unpacker_cfg);
+		CAM_DBG(CAM_SFE,
+			"latency_buf_alloc:0x%x stride:0x%x",
+			rm_data->latency_buf_allocation, rm_data->stride);
+		CAM_DBG(CAM_SFE,
+			"fs_sync_en:%d hbi_cnt:0x%x fs_mode:0x%x min_vbi:0x%x",
+			sfe_bus_rd_data->fs_sync_enable,
+			rm_data->hbi_count, rm_data->fs_mode,
+			rm_data->min_vbi);
 	}
 	return 0;
 }
@@ -1875,17 +1102,56 @@ static int cam_sfe_bus_rd_dump_irq_desc(
 static int cam_sfe_bus_init_hw(void *hw_priv,
 	void *init_hw_args, uint32_t arg_size)
 {
-	struct cam_sfe_bus_rd_priv *bus_priv = hw_priv;
+	struct cam_sfe_bus_rd_priv    *bus_priv = hw_priv;
+	uint32_t                       offset = 0;
+	struct cam_sfe_bus_rd_reg_offset_common  *common_reg;
+	uint32_t sfe_top_irq_mask[CAM_SFE_IRQ_REGISTERS_MAX] = {0};
 
-	if (!hw_priv) {
+	if (!bus_priv) {
 		CAM_ERR(CAM_SFE, "Invalid args");
 		return -EINVAL;
 	}
+	common_reg = bus_priv->common_data.common_reg;
+	sfe_top_irq_mask[0] = (1 << bus_priv->top_irq_shift);
 
-	CAM_DBG(CAM_SFE, "SFE:%d bus-rd hw-version:0x%x",
-		bus_priv->common_data.core_index,
-		cam_io_r_mb(bus_priv->common_data.mem_base +
-			bus_priv->common_data.common_reg->hw_version));
+	/* Subscribe for top IRQ */
+	bus_priv->irq_handle = cam_irq_controller_subscribe_irq(
+		bus_priv->common_data.sfe_irq_controller,
+		CAM_IRQ_PRIORITY_2,
+		sfe_top_irq_mask,
+		bus_priv,
+		cam_sfe_bus_rd_handle_irq,
+		NULL,
+		NULL,
+		NULL);
+
+	if (bus_priv->irq_handle < 1) {
+		CAM_ERR(CAM_SFE,
+			"Failed to subscribe TOP IRQ for BUS RD");
+		bus_priv->irq_handle = 0;
+		return -EFAULT;
+	}
+
+	if (bus_priv->tasklet_info != NULL) {
+		bus_priv->error_irq_handle = cam_irq_controller_subscribe_irq(
+			bus_priv->common_data.bus_irq_controller,
+			CAM_IRQ_PRIORITY_1,
+			bus_rd_error_irq_mask,
+			bus_priv,
+			cam_sfe_bus_rd_handle_irq_top_half,
+			cam_sfe_bus_rd_handle_irq_bottom_half,
+			bus_priv->tasklet_info,
+			&tasklet_bh_api);
+
+		if (bus_priv->error_irq_handle < 1) {
+			CAM_ERR(CAM_SFE, "Failed to subscribe error IRQ");
+			bus_priv->error_irq_handle = 0;
+			return -EFAULT;
+		}
+	}
+	/* BUS_RD_TEST_BUS_CTRL disabling test bus */
+	offset = common_reg->test_bus_ctrl;
+	cam_io_w_mb(0x0, bus_priv->common_data.mem_base + offset);
 
 	return 0;
 }
@@ -1893,103 +1159,34 @@ static int cam_sfe_bus_init_hw(void *hw_priv,
 static int cam_sfe_bus_deinit_hw(void *hw_priv,
 	void *deinit_hw_args, uint32_t arg_size)
 {
-	return 0;
-}
+	struct cam_sfe_bus_rd_priv    *bus_priv = hw_priv;
+	int                            rc = 0;
 
-static int cam_sfe_bus_rd_config_update(
-	void *priv, void *cmd_args, uint32_t arg_size)
-{
-	int i;
-	struct cam_isp_hw_get_cmd_update       *rm_config_update;
-	struct cam_isp_vfe_wm_config           *rm_config = NULL;
-	struct cam_sfe_bus_rd_data             *sfe_bus_rd_data = NULL;
-	struct cam_sfe_bus_rd_rm_resource_data *rm_data = NULL;
-
-	rm_config_update =  (struct cam_isp_hw_get_cmd_update *) cmd_args;
-	rm_config = (struct cam_isp_vfe_wm_config  *)
-		rm_config_update->data;
-
-	sfe_bus_rd_data = (struct cam_sfe_bus_rd_data *)
-		rm_config_update->res->res_priv;
-
-	if (!sfe_bus_rd_data) {
-		CAM_ERR(CAM_SFE, "Failed! Invalid data");
+	if (!bus_priv) {
+		CAM_ERR(CAM_SFE, "Error: Invalid args");
 		return -EINVAL;
 	}
 
-	for (i = 0; i < sfe_bus_rd_data->num_rm; i++) {
-		rm_data = sfe_bus_rd_data->rm_res[i]->res_priv;
-
-		rm_data->offset = rm_config->offset;
-		rm_data->width = rm_config->width;
-		rm_data->height = rm_config->height;
-		CAM_DBG(CAM_SFE,
-			"SFE: %u RM: %d offset: %u width: %u height: %u",
-			rm_data->index, rm_data->index, rm_data->offset,
-			rm_data->width, rm_data->height);
+	/* Unsubscribe irqs */
+	if (bus_priv->irq_handle) {
+		rc =   cam_irq_controller_unsubscribe_irq(
+				bus_priv->common_data.sfe_irq_controller,
+				bus_priv->irq_handle);
+		if (rc)
+			CAM_ERR(CAM_SFE, "Failed to unsubscribe top irq");
+		bus_priv->irq_handle = 0;
 	}
 
-	return 0;
-}
-
-static int cam_sfe_bus_rd_cache_config(void *priv, void *cmd_args,
-	uint32_t arg_size)
-{
-	int i;
-	struct cam_sfe_bus_rd_priv              *bus_priv;
-	struct cam_isp_sfe_bus_sys_cache_config *cache_cfg;
-	struct cam_sfe_bus_rd_data              *sfe_bus_rd_data = NULL;
-	struct cam_sfe_bus_rd_rm_resource_data  *rm_data = NULL;
-
-	bus_priv = (struct cam_sfe_bus_rd_priv  *)priv;
-	cache_cfg =  (struct cam_isp_sfe_bus_sys_cache_config *)cmd_args;
-
-	sfe_bus_rd_data = (struct cam_sfe_bus_rd_data *)
-		cache_cfg->res->res_priv;
-
-	if (!sfe_bus_rd_data) {
-		CAM_ERR(CAM_SFE, "Invalid data");
-		return -EINVAL;
+	if (bus_priv->error_irq_handle) {
+		rc =   cam_irq_controller_unsubscribe_irq(
+				bus_priv->common_data.bus_irq_controller,
+				bus_priv->error_irq_handle);
+		if (rc)
+			CAM_ERR(CAM_SFE, "Failed to unsubscribe error irq");
+		bus_priv->error_irq_handle = 0;
 	}
 
-	if (bus_priv->common_data.cache_dbg_cfg.disable_all)
-		return 0;
-
-	for (i = 0; i < sfe_bus_rd_data->num_rm; i++) {
-		rm_data = (struct cam_sfe_bus_rd_rm_resource_data *)
-			sfe_bus_rd_data->rm_res[i]->res_priv;
-		rm_data->enable_caching = cache_cfg->use_cache;
-		rm_data->current_scid = cache_cfg->scid;
-		cache_cfg->rd_cfg_done = true;
-
-		CAM_DBG(CAM_SFE, "SFE:%d RM:%d cache_enable:%s scid:%u",
-			rm_data->common_data->core_index,
-			rm_data->index,
-			(rm_data->enable_caching ? "true" : "false"),
-			rm_data->current_scid);
-	}
-
-	return 0;
-}
-
-static int cam_sfe_bus_rd_set_debug_cfg(
-	void *priv, void *cmd_args)
-{
-	struct cam_sfe_bus_rd_priv *bus_priv =
-		(struct cam_sfe_bus_rd_priv  *) priv;
-	struct cam_sfe_debug_cfg_params *debug_cfg;
-
-	debug_cfg = (struct cam_sfe_debug_cfg_params *)cmd_args;
-
-	if (debug_cfg->cache_config)
-		cam_sfe_bus_parse_cache_cfg(true,
-			debug_cfg->u.cache_cfg.sfe_cache_dbg,
-			&bus_priv->common_data.cache_dbg_cfg);
-	else
-		bus_priv->common_data.sfe_debug_cfg =
-			debug_cfg->u.dbg_cfg.sfe_debug_cfg;
-
-	return 0;
+	return rc;
 }
 
 static int cam_sfe_bus_rd_process_cmd(
@@ -2008,53 +1205,11 @@ static int cam_sfe_bus_rd_process_cmd(
 	case CAM_ISP_HW_CMD_GET_BUF_UPDATE_RM:
 		rc = cam_sfe_bus_rd_update_rm(priv, cmd_args, arg_size);
 		break;
-	case CAM_ISP_HW_CMD_BUF_UPDATE_RM:
-		rc = cam_sfe_bus_rd_config_rm(priv, cmd_args, arg_size);
-		break;
-	case CAM_ISP_HW_CMD_GET_RM_SECURE_MODE:
+	case CAM_ISP_HW_CMD_GET_SECURE_MODE:
 		rc = cam_sfe_bus_rd_get_secure_mode(priv, cmd_args, arg_size);
 		break;
 	case CAM_ISP_HW_CMD_FE_UPDATE_BUS_RD:
-		rc = cam_sfe_bus_rd_config_update(priv, cmd_args, arg_size);
-		break;
-	case CAM_ISP_HW_CMD_SET_SFE_DEBUG_CFG:
-		rc = cam_sfe_bus_rd_set_debug_cfg(priv, cmd_args);
-		break;
-	case CAM_ISP_HW_SFE_SYS_CACHE_RM_CONFIG:
-		rc = cam_sfe_bus_rd_cache_config(priv, cmd_args, arg_size);
-		break;
-	case CAM_ISP_HW_CMD_RM_ENABLE_DISABLE:
-		rc = cam_sfe_bus_rd_update_rm_core_cfg(priv, cmd_args, arg_size);
-		break;
-	case CAM_ISP_HW_CMD_GET_RES_FOR_MID:
-		rc = cam_sfe_bus_rd_get_res_for_mid(priv, cmd_args, arg_size);
-		break;
-	case CAM_ISP_HW_CMD_DUMP_BUS_INFO: {
-		struct cam_isp_hw_event_info  *event_info =
-			(struct cam_isp_hw_event_info *)cmd_args;
-		enum cam_sfe_bus_rd_type       bus_rd_res_id;
-
-		bus_rd_res_id = cam_sfe_bus_get_bus_rd_res_id(
-			event_info->res_id);
-
-		/* Skip if it's not a read resource */
-		if (bus_rd_res_id == CAM_SFE_BUS_RD_MAX) {
-			CAM_DBG(CAM_SFE,
-				"Not a SFE read res: 0x%x - skip dump",
-				event_info->res_id);
-			rc = 0;
-			break;
-		}
-
-		rc = cam_sfe_bus_rd_print_dimensions(bus_rd_res_id,
-			(struct cam_sfe_bus_rd_priv  *)priv);
-		break;
-	}
-	case CAM_ISP_HW_CMD_IRQ_INJECTION:
-		rc = cam_sfe_bus_rd_irq_inject(priv, cmd_args, arg_size);
-		break;
-	case CAM_ISP_HW_CMD_DUMP_IRQ_DESCRIPTION:
-		rc = cam_sfe_bus_rd_dump_irq_desc(priv, cmd_args, arg_size);
+		rc = cam_sfe_bus_rd_update_fs_cfg(priv, cmd_args, arg_size);
 		break;
 	default:
 		CAM_ERR_RATE_LIMIT(CAM_SFE,
@@ -2080,7 +1235,7 @@ int cam_sfe_bus_rd_init(
 
 	if (!soc_info || !hw_intf || !bus_hw_info) {
 		CAM_ERR(CAM_SFE,
-			"Invalid_params soc_info:%pK hw_intf:%pK hw_info:%pK data:%pK",
+			"Invalid_params soc_info:%pK hw_intf:%pK hw_info:%pK",
 			soc_info, hw_intf, bus_rd_hw_info);
 		rc = -EINVAL;
 		goto end;
@@ -2111,19 +1266,12 @@ int cam_sfe_bus_rd_init(
 	bus_priv->common_data.hw_intf           = hw_intf;
 	bus_priv->common_data.sfe_irq_controller = sfe_irq_controller;
 	bus_priv->common_data.common_reg        = &bus_rd_hw_info->common_reg;
-	bus_priv->common_data.irq_err_mask      = bus_rd_hw_info->irq_err_mask;
-	bus_priv->common_data.cons_chk_en_avail =
-		bus_rd_hw_info->constraint_error_info->cons_chk_en_avail;
-	bus_priv->common_data.soc_info         = soc_info;
 	bus_priv->top_irq_shift                 = bus_rd_hw_info->top_irq_shift;
-	bus_priv->latency_buf_allocation        = bus_rd_hw_info->latency_buf_allocation;
-	bus_priv->sys_cache_default_cfg         = bus_rd_hw_info->sys_cache_default_val;
-	bus_priv->bus_rd_hw_info = bus_rd_hw_info;
 
 	rc = cam_irq_controller_init(drv_name,
 		bus_priv->common_data.mem_base,
 		&bus_rd_hw_info->common_reg.irq_reg_info,
-		&bus_priv->common_data.bus_irq_controller);
+		&bus_priv->common_data.bus_irq_controller, true);
 	if (rc) {
 		CAM_ERR(CAM_SFE, "IRQ controller init failed");
 		goto free_bus_priv;
@@ -2133,8 +1281,7 @@ int cam_sfe_bus_rd_init(
 		rc = cam_sfe_bus_init_rm_resource(i, bus_priv, bus_hw_info,
 			&bus_priv->bus_client[i]);
 		if (rc < 0) {
-			CAM_ERR(CAM_SFE, "Init RM failed for client:%d, rc=%d",
-				i, rc);
+			CAM_ERR(CAM_SFE, "Init RM failed rc=%d", rc);
 			goto deinit_rm;
 		}
 	}
@@ -2143,8 +1290,7 @@ int cam_sfe_bus_rd_init(
 		rc = cam_sfe_bus_init_sfe_bus_read_resource(i, bus_priv,
 			bus_rd_hw_info);
 		if (rc < 0) {
-			CAM_ERR(CAM_SFE, "Init SFE RD failed for client:%d, rc=%d",
-				i, rc);
+			CAM_ERR(CAM_SFE, "Init SFE RD failed rc=%d", rc);
 			goto deinit_sfe_bus_rd;
 		}
 	}
@@ -2168,11 +1314,12 @@ int cam_sfe_bus_rd_init(
 	sfe_bus_local->hw_ops.process_cmd  = cam_sfe_bus_rd_process_cmd;
 
 	*sfe_bus = sfe_bus_local;
-	bus_priv->common_data.sfe_debug_cfg = 0;
 
 	return rc;
 
 deinit_sfe_bus_rd:
+	if (i < 0)
+		i = CAM_SFE_BUS_RD_MAX;
 	for (--i; i >= 0; i--)
 		cam_sfe_bus_deinit_sfe_bus_rd_resource(
 			&bus_priv->sfe_bus_rd[i]);
@@ -2225,8 +1372,7 @@ int cam_sfe_bus_rd_deinit(
 			CAM_ERR(CAM_SFE,
 				"Deinit RM failed rc=%d", rc);
 	}
-
-	for (i = 0; i < bus_priv->num_bus_rd_resc; i++) {
+	for (i = 0; i < CAM_SFE_BUS_RD_MAX; i++) {
 		rc = cam_sfe_bus_deinit_sfe_bus_rd_resource(
 			&bus_priv->sfe_bus_rd[i]);
 		if (rc < 0)

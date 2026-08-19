@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/module.h>
 #include <linux/build_bug.h>
+#include <linux/stringify.h>
 
 #include "cam_req_mgr_dev.h"
 #include "cam_sync_api.h"
@@ -24,22 +25,18 @@
 #include "cam_csiphy_dev.h"
 #include "cam_eeprom_dev.h"
 #include "cam_ois_dev.h"
-#include "cam_tpg_dev.h"
+#include "wl2866d.h"
+
 #include "cam_flash_dev.h"
 
-#include "cam_icp_v1_dev.h"
-#include "cam_icp_v2_dev.h"
+#include "a5_core.h"
 #include "ipe_core.h"
 #include "bps_core.h"
-#include "ofe_core.h"
 #include "cam_icp_subdev.h"
 
 #include "jpeg_dma_core.h"
 #include "jpeg_enc_core.h"
 #include "cam_jpeg_dev.h"
-
-#include "cre_core.h"
-#include "cam_cre_dev.h"
 
 #include "cam_fd_hw_intf.h"
 #include "cam_fd_dev.h"
@@ -54,17 +51,16 @@
 #include "cam_debug_util.h"
 
 #include "ope_dev_intf.h"
-#include "cre_dev_intf.h"
 
+#include "cam_top_tpg.h"
 #include "cam_tfe_dev.h"
-#include "cam_tfe_csid.h"
+#include "cam_tfe_csid_dev.h"
 #include "cam_csid_ppi100.h"
 #include "camera_main.h"
 
-#ifdef CONFIG_CAM_PRESIL
-extern int cam_presil_framework_dev_init_from_main(void);
-extern void cam_presil_framework_dev_exit_from_main(void);
-#endif
+char camera_banner[] = "Camera-Banner: (" __stringify(KBUILD_BUILD_USER) "@"\
+	__stringify(KBUILD_BUILD_HOST) ")\
+	(" __stringify(KBUILD_BUILD_TIMESTAMP) ")";
 
 struct camera_submodule_component {
 	int (*init)(void);
@@ -96,10 +92,13 @@ static const struct camera_submodule_component camera_tfe[] = {
 
 static const struct camera_submodule_component camera_isp[] = {
 #ifdef CONFIG_SPECTRA_ISP
-	{&cam_ife_csid_init_module, &cam_ife_csid_exit_module},
+	{&cam_top_tpg_init_module, &cam_top_tpg_exit_module},
+	{&cam_ife_csid17x_init_module, &cam_ife_csid17x_exit_module},
 	{&cam_ife_csid_lite_init_module, &cam_ife_csid_lite_exit_module},
 	{&cam_vfe_init_module, &cam_vfe_exit_module},
+#ifdef CONFIG_SPECTRA_SFE
 	{&cam_sfe_init_module, &cam_sfe_exit_module},
+#endif
 	{&cam_isp_dev_init_module, &cam_isp_dev_exit_module},
 #endif
 };
@@ -109,7 +108,7 @@ static const struct camera_submodule_component camera_sensor[] = {
 	{&cam_res_mgr_init, &cam_res_mgr_exit},
 	{&cam_cci_init_module, &cam_cci_exit_module},
 	{&cam_csiphy_init_module, &cam_csiphy_exit_module},
-	{&cam_tpg_init_module, &cam_tpg_exit_module},
+	{&cam_wl2866_init_module, &cam_wl2866_exit_module},
 	{&cam_actuator_driver_init, &cam_actuator_driver_exit},
 	{&cam_sensor_driver_init, &cam_sensor_driver_exit},
 	{&cam_eeprom_driver_init, &cam_eeprom_driver_exit},
@@ -120,11 +119,9 @@ static const struct camera_submodule_component camera_sensor[] = {
 
 static const struct camera_submodule_component camera_icp[] = {
 #ifdef CONFIG_SPECTRA_ICP
-	{&cam_icp_v1_init_module, &cam_icp_v1_exit_module},
-	{&cam_icp_v2_init_module, &cam_icp_v2_exit_module},
+	{&cam_a5_init_module, &cam_a5_exit_module},
 	{&cam_ipe_init_module, &cam_ipe_exit_module},
 	{&cam_bps_init_module, &cam_bps_exit_module},
-	{&cam_ofe_init_module, &cam_ofe_exit_module},
 	{&cam_icp_init_module, &cam_icp_exit_module},
 #endif
 };
@@ -136,12 +133,6 @@ static const struct camera_submodule_component camera_ope[] = {
 #endif
 };
 
-static const struct camera_submodule_component camera_cre[] = {
-#ifdef CONFIG_SPECTRA_CRE
-	{&cam_cre_init_module, &cam_cre_exit_module},
-	{&cam_cre_subdev_init_module, &cam_cre_subdev_exit_module},
-#endif
-};
 static const struct camera_submodule_component camera_jpeg[] = {
 #ifdef CONFIG_SPECTRA_JPEG
 	{&cam_jpeg_enc_init_module, &cam_jpeg_enc_exit_module},
@@ -169,12 +160,6 @@ static const struct camera_submodule_component camera_custom[] = {
 	{&cam_custom_hw_sub_module_init, &cam_custom_hw_sub_module_exit},
 	{&cam_custom_csid_driver_init, &cam_custom_csid_driver_exit},
 	{&cam_custom_dev_init_module, &cam_custom_dev_exit_module},
-#endif
-};
-
-static const struct camera_submodule_component camera_presil[] = {
-#ifdef CONFIG_CAM_PRESIL
-	{&cam_presil_framework_dev_init_from_main, &cam_presil_framework_dev_exit_from_main},
 #endif
 };
 
@@ -225,19 +210,9 @@ static const struct camera_submodule submodule_table[] = {
 		.component = camera_lrme,
 	},
 	{
-		.name = "Camera CRE",
-		.num_component = ARRAY_SIZE(camera_cre),
-		.component = camera_cre,
-	},
-	{
 		.name = "Camera CUSTOM",
 		.num_component = ARRAY_SIZE(camera_custom),
 		.component = camera_custom,
-	},
-	{
-		.name = "Camera Presil",
-		.num_component = ARRAY_SIZE(camera_presil),
-		.component = camera_presil,
 	}
 };
 
@@ -291,8 +266,6 @@ static int camera_init(void)
 	if (rc)
 		goto end_init;
 
-	cam_debugfs_init();
-
 	/* For Probing all available submodules */
 	for (i = 0; i < ARRAY_SIZE(submodule_table); i++) {
 		num_inits = submodule_table[i].num_component;
@@ -312,7 +285,7 @@ static int camera_init(void)
 		}
 	}
 
-	CAM_DBG(CAM_UTIL, "Camera initcalls done");
+	CAM_INFO(CAM_UTIL, "Spectra camera driver initialized");
 
 end_init:
 	return rc;
@@ -321,7 +294,6 @@ end_init:
 static void camera_exit(void)
 {
 	__camera_exit(ARRAY_SIZE(submodule_table), 0);
-	cam_debugfs_deinit();
 
 	CAM_INFO(CAM_UTIL, "Spectra camera driver exited!");
 }

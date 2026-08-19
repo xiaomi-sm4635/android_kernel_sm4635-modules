@@ -1,32 +1,26 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_SENSOR_CMN_HEADER_
 #define _CAM_SENSOR_CMN_HEADER_
 
 #include <linux/i2c.h>
-#include <linux/i3c/master.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/timer.h>
 #include <linux/delay.h>
 #include <linux/list.h>
-
-#include <dt-bindings/msm-camera.h>
 #include <media/cam_sensor.h>
 #include <media/cam_req_mgr.h>
 
-#define MAX_POWER_CONFIG                       12
-#define MAX_PER_FRAME_ARRAY                    32
-#define BATCH_SIZE_MAX                         16
-#define CAM_I3C_DEV_PROBE_TIMEOUT_MS           10
-#define CAM_I3C_DEV_PROBE_TIMEOUT_US          (CAM_I3C_DEV_PROBE_TIMEOUT_MS * 1000)
-#define I3C_SENSOR_DEV_ID_DT_PATH              "/soc/qcom,cam-i3c-id-table"
-#define MAX_I3C_DEVICE_ID_ENTRIES              (MAX_CAMERAS * 2)
+#define MAX_POWER_CONFIG    12
+
+#define MAX_PER_FRAME_ARRAY 32
+#define BATCH_SIZE_MAX      16
 
 #define CAM_SENSOR_NAME    "cam-sensor"
 #define CAM_ACTUATOR_NAME  "cam-actuator"
@@ -34,11 +28,50 @@
 #define CAM_FLASH_NAME     "cam-flash"
 #define CAM_EEPROM_NAME    "cam-eeprom"
 #define CAM_OIS_NAME       "cam-ois"
-#define CAM_TPG_NAME       "cam-tpg"
 
 #define MAX_SYSTEM_PIPELINE_DELAY 2
 
 #define CAM_PKT_NOP_OPCODE 127
+
+enum camera_sensor_cmd_type {
+	CAMERA_SENSOR_CMD_TYPE_INVALID,
+	CAMERA_SENSOR_CMD_TYPE_PROBE,
+	CAMERA_SENSOR_CMD_TYPE_PWR_UP,
+	CAMERA_SENSOR_CMD_TYPE_PWR_DOWN,
+	CAMERA_SENSOR_CMD_TYPE_I2C_INFO,
+	CAMERA_SENSOR_CMD_TYPE_I2C_RNDM_WR,
+	CAMERA_SENSOR_CMD_TYPE_I2C_RNDM_RD,
+	CAMERA_SENSOR_CMD_TYPE_I2C_CONT_WR,
+	CAMERA_SENSOR_CMD_TYPE_I2C_CONT_RD,
+	CAMERA_SENSOR_CMD_TYPE_WAIT,
+	CAMERA_SENSOR_FLASH_CMD_TYPE_INIT_INFO,
+	CAMERA_SENSOR_FLASH_CMD_TYPE_FIRE,
+	CAMERA_SENSOR_FLASH_CMD_TYPE_RER,
+	CAMERA_SENSOR_FLASH_CMD_TYPE_QUERYCURR,
+	CAMERA_SENSOR_FLASH_CMD_TYPE_WIDGET,
+	CAMERA_SENSOR_CMD_TYPE_RD_DATA,
+	CAMERA_SENSOR_FLASH_CMD_TYPE_INIT_FIRE,
+	CAMERA_SENSOR_CMD_TYPE_MAX,
+};
+
+enum camera_sensor_i2c_op_code {
+	CAMERA_SENSOR_I2C_OP_INVALID,
+	CAMERA_SENSOR_I2C_OP_RNDM_WR,
+	CAMERA_SENSOR_I2C_OP_RNDM_WR_VERF,
+	CAMERA_SENSOR_I2C_OP_CONT_WR_BRST,
+	CAMERA_SENSOR_I2C_OP_CONT_WR_BRST_VERF,
+	CAMERA_SENSOR_I2C_OP_CONT_WR_SEQN,
+	CAMERA_SENSOR_I2C_OP_CONT_WR_SEQN_VERF,
+	CAMERA_SENSOR_I2C_OP_MAX,
+};
+
+enum camera_sensor_wait_op_code {
+	CAMERA_SENSOR_WAIT_OP_INVALID,
+	CAMERA_SENSOR_WAIT_OP_COND,
+	CAMERA_SENSOR_WAIT_OP_HW_UCND,
+	CAMERA_SENSOR_WAIT_OP_SW_UCND,
+	CAMERA_SENSOR_WAIT_OP_MAX,
+};
 
 enum camera_flash_opcode {
 	CAMERA_SENSOR_FLASH_OP_INVALID,
@@ -111,7 +144,44 @@ enum msm_camera_power_seq_type {
 	SENSOR_CUSTOM_GPIO1,
 	SENSOR_CUSTOM_GPIO2,
 	SENSOR_VANA1,
+	SENSOR_WL2866D_DVDD1,
+	SENSOR_WL2866D_DVDD2,
+	SENSOR_WL2866D_AVDD1,
+	SENSOR_WL2866D_AVDD2,
 	SENSOR_SEQ_TYPE_MAX,
+};
+
+enum cam_sensor_packet_opcodes {
+	CAM_SENSOR_PACKET_OPCODE_SENSOR_STREAMON,
+	CAM_SENSOR_PACKET_OPCODE_SENSOR_UPDATE,
+	CAM_SENSOR_PACKET_OPCODE_SENSOR_INITIAL_CONFIG,
+	CAM_SENSOR_PACKET_OPCODE_SENSOR_PROBE,
+	CAM_SENSOR_PACKET_OPCODE_SENSOR_CONFIG,
+	CAM_SENSOR_PACKET_OPCODE_SENSOR_STREAMOFF,
+	CAM_SENSOR_PACKET_OPCODE_SENSOR_READ,
+	CAM_SENSOR_PACKET_OPCODE_SENSOR_FRAME_SKIP_UPDATE,
+	CAM_SENSOR_PACKET_OPCODE_SENSOR_REG_BANK_UNLOCK,
+	CAM_SENSOR_PACKET_OPCODE_SENSOR_REG_BANK_LOCK,
+	CAM_SENSOR_PACKET_OPCODE_SENSOR_NOP = 127
+};
+
+enum cam_actuator_packet_opcodes {
+	CAM_ACTUATOR_PACKET_OPCODE_INIT,
+	CAM_ACTUATOR_PACKET_AUTO_MOVE_LENS,
+	CAM_ACTUATOR_PACKET_MANUAL_MOVE_LENS,
+	CAM_ACTUATOR_PACKET_OPCODE_READ
+};
+
+enum cam_eeprom_packet_opcodes {
+	CAM_EEPROM_PACKET_OPCODE_INIT,
+	CAM_EEPROM_WRITE
+};
+
+enum cam_ois_packet_opcodes {
+	CAM_OIS_PACKET_OPCODE_INIT,
+	CAM_OIS_PACKET_OPCODE_OIS_CONTROL,
+	CAM_OIS_PACKET_OPCODE_READ,
+	CAM_OIS_PACKET_OPCODE_WRITE_TIME
 };
 
 enum msm_bus_perf_setting {
@@ -141,9 +211,9 @@ enum cam_flash_device_type {
 };
 
 enum cci_i2c_master_t {
-	MASTER_0 = CCI_MASTER_0,
-	MASTER_1 = CCI_MASTER_1,
-	MASTER_MAX = CCI_MASTER_MAX,
+	MASTER_0,
+	MASTER_1,
+	MASTER_MAX,
 };
 
 enum cci_device_num {
@@ -208,15 +278,6 @@ struct cam_sensor_i2c_reg_array {
 	uint32_t data_mask;
 };
 
-enum cam_sensor_module_debugfs_device_type {
-	CAM_SENSOR_ACTUATOR,
-	CAM_SENSOR_EEPROM,
-	CAM_SENSOR_FLASH,
-	CAM_SENSOR_OIS,
-	CAM_SENSOR_DEVICE,
-	CAM_SENSOR_MAX,
-};
-
 struct cam_sensor_i2c_reg_setting {
 	struct cam_sensor_i2c_reg_array *reg_setting;
 	uint32_t size;
@@ -255,7 +316,6 @@ struct i2c_data_settings {
 	struct i2c_settings_array read_settings;
 	struct i2c_settings_array *per_frame;
 	struct i2c_settings_array *frame_skip;
-	struct i2c_settings_array *bubble_update;
 	struct i2c_settings_array reg_bank_unlock_settings;
 	struct i2c_settings_array reg_bank_lock_settings;
 };
@@ -272,10 +332,10 @@ struct cam_sensor_power_ctrl_t {
 };
 
 struct cam_camera_slave_info {
-	uint32_t sensor_slave_addr;
-	uint32_t sensor_id_reg_addr;
-	uint32_t sensor_id;
-	uint32_t sensor_id_mask;
+	uint16_t sensor_slave_addr;
+	uint16_t sensor_id_reg_addr;
+	uint16_t sensor_id;
+	uint16_t sensor_id_mask;
 };
 
 struct msm_sensor_init_params {
@@ -321,7 +381,6 @@ struct cam_sensor_power_setting {
 	long config_val;
 	unsigned short delay;
 	void *data[10];
-	bool valid_config;
 };
 
 struct cam_sensor_board_info {
@@ -362,27 +421,5 @@ struct msm_camera_gpio_conf {
 	uint8_t camera_on_table_size;
 	struct msm_camera_gpio_num_info *gpio_num_info;
 };
-
-/**
- * cam_sensor_module_add_i2c_device()
- * @brief: Each sensor device passes its ctrl struct to a global
- *         structure of i2c devices in cam_sensor_module_debug.c
- * @ctrl_struct: Passed as void pointer, and recast to actual struct
- *               based on device_type
- * @device_type: Device type based on cam_sensor_module_debugfs_device_type
- */
-void cam_sensor_module_add_i2c_device(void *ctrl_struct, int device_type);
-
-/**
- * cam_sensor_module_debug_register()
- * @brief Creates debugfs entry
- */
-int cam_sensor_module_debug_register(void);
-
-/**
- * cam_sensor_module_debug_deregister(void)
- * @brief Take down debugfs entry
- */
-void cam_sensor_module_debug_deregister(void);
 
 #endif /* _CAM_SENSOR_CMN_HEADER_ */

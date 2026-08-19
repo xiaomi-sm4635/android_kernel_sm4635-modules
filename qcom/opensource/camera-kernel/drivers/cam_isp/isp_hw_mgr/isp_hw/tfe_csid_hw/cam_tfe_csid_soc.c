@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/slab.h>
 #include "cam_tfe_csid_soc.h"
@@ -10,12 +9,11 @@
 
 
 int cam_tfe_csid_init_soc_resources(struct cam_hw_soc_info *soc_info,
-	irq_handler_t csid_irq_handler, void *data)
+	irq_handler_t csid_irq_handler, void *irq_data)
 {
-	int rc = 0, i;
+	int rc = 0;
 	struct cam_cpas_register_params   cpas_register_param;
 	struct cam_tfe_csid_soc_private      *soc_private;
-	void *irq_data[CAM_SOC_MAX_IRQ_LINES_PER_DEV] = {0};
 
 	soc_private = kzalloc(sizeof(struct cam_tfe_csid_soc_private),
 		GFP_KERNEL);
@@ -24,19 +22,15 @@ int cam_tfe_csid_init_soc_resources(struct cam_hw_soc_info *soc_info,
 
 	soc_info->soc_private = soc_private;
 
+
 	rc = cam_soc_util_get_dt_properties(soc_info);
 	if (rc < 0)
 		return rc;
 
-	for (i = 0; i < soc_info->irq_count; i++)
-		irq_data[i] = data;
-
-	soc_private->is_tfe_csid_lite = false;
-	if (strnstr(soc_info->compatible, "lite", strlen(soc_info->compatible)) != NULL)
-		soc_private->is_tfe_csid_lite = true;
-
 	/* Need to see if we want post process the clock list */
-	rc = cam_soc_util_request_platform_resource(soc_info, csid_irq_handler, &(irq_data[0]));
+	rc = cam_soc_util_request_platform_resource(soc_info, csid_irq_handler,
+		irq_data);
+
 	if (rc < 0) {
 		CAM_ERR(CAM_ISP,
 			"Error Request platform resources failed rc=%d", rc);
@@ -98,7 +92,7 @@ int cam_tfe_csid_enable_soc_resources(
 	soc_private = soc_info->soc_private;
 
 	ahb_vote.type = CAM_VOTE_ABSOLUTE;
-	ahb_vote.vote.level = CAM_LOWSVS_D1_VOTE;
+	ahb_vote.vote.level = CAM_SVS_VOTE;
 	axi_vote.num_paths = 1;
 	axi_vote.axi_path[0].path_data_type = CAM_AXI_PATH_DATA_ALL;
 	axi_vote.axi_path[0].transac_type = CAM_AXI_TRANSACTION_WRITE;
@@ -119,7 +113,7 @@ int cam_tfe_csid_enable_soc_resources(
 		goto end;
 	}
 
-	rc = cam_soc_util_enable_platform_resource(soc_info, CAM_CLK_SW_CLIENT_IDX, true,
+	rc = cam_soc_util_enable_platform_resource(soc_info, true,
 		clk_level, true);
 	if (rc) {
 		CAM_ERR(CAM_ISP, "enable platform failed");
@@ -145,7 +139,7 @@ int cam_tfe_csid_disable_soc_resources(struct cam_hw_soc_info *soc_info)
 	}
 	soc_private = soc_info->soc_private;
 
-	rc = cam_soc_util_disable_platform_resource(soc_info, CAM_CLK_SW_CLIENT_IDX, true, true);
+	rc = cam_soc_util_disable_platform_resource(soc_info, true, true);
 	if (rc)
 		CAM_ERR(CAM_ISP, "Disable platform failed");
 
@@ -173,7 +167,7 @@ int cam_tfe_csid_enable_tfe_force_clock_on(struct cam_hw_soc_info  *soc_info,
 	soc_private = soc_info->soc_private;
 	cpass_tfe_force_clk_offset =
 		cpas_tfe_base_offset + (0x4 * soc_info->index);
-	rc = cam_cpas_reg_write(soc_private->cpas_handle, CAM_CPAS_REGBASE_CPASTOP,
+	rc = cam_cpas_reg_write(soc_private->cpas_handle, CAM_CPAS_REG_CPASTOP,
 		cpass_tfe_force_clk_offset, 1, 1);
 
 	if (rc)
@@ -201,7 +195,7 @@ int cam_tfe_csid_disable_tfe_force_clock_on(struct cam_hw_soc_info *soc_info,
 	soc_private = soc_info->soc_private;
 	cpass_tfe_force_clk_offset =
 		cpas_tfe_base_offset + (0x4 * soc_info->index);
-	rc = cam_cpas_reg_write(soc_private->cpas_handle, CAM_CPAS_REGBASE_CPASTOP,
+	rc = cam_cpas_reg_write(soc_private->cpas_handle, CAM_CPAS_REG_CPASTOP,
 		cpass_tfe_force_clk_offset,  1, 0);
 
 	if (rc)

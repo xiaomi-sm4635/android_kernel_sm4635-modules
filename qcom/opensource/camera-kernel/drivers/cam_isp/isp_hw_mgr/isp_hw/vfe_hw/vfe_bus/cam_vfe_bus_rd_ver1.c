@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/ratelimit.h>
@@ -703,8 +702,7 @@ static int cam_vfe_bus_start_vfe_bus_rd(
 		cam_vfe_bus_rd_handle_irq_top_half,
 		cam_vfe_bus_rd_handle_irq_bottom_half,
 		vfe_bus_rd->tasklet_info,
-		&tasklet_bh_api,
-		CAM_IRQ_EVT_GROUP_0);
+		&tasklet_bh_api);
 
 	if (rsrc_data->irq_handle < 1) {
 		CAM_ERR(CAM_ISP, "Failed to subscribe BUS RD IRQ");
@@ -851,7 +849,7 @@ static int cam_vfe_bus_rd_ver1_handle_irq(uint32_t    evt_id,
 	CAM_DBG(CAM_ISP, "Top Bus RD IRQ Received");
 
 	rc = cam_irq_controller_handle_irq(evt_id,
-		bus_priv->common_data.bus_irq_controller, CAM_IRQ_EVT_GROUP_0);
+		bus_priv->common_data.bus_irq_controller);
 
 	return (rc == IRQ_HANDLED) ? 0 : -EINVAL;
 }
@@ -859,16 +857,16 @@ static int cam_vfe_bus_rd_ver1_handle_irq(uint32_t    evt_id,
 static int cam_vfe_bus_rd_update_rm(void *priv, void *cmd_args,
 	uint32_t arg_size)
 {
+	struct cam_vfe_bus_rd_ver1_priv          *bus_priv;
 	struct cam_isp_hw_get_cmd_update         *update_buf;
 	struct cam_buf_io_cfg                    *io_cfg;
-	struct cam_vfe_bus_rd_ver1_vfe_bus_rd_data  *vfe_bus_rd_data = NULL;
+	struct cam_vfe_bus_rd_ver1_vfe_bus_rd_data     *vfe_bus_rd_data = NULL;
 	struct cam_vfe_bus_rd_ver1_rm_resource_data *rm_data = NULL;
-	struct cam_cdm_utils_ops                    *cdm_util_ops;
 	uint32_t *reg_val_pair;
-	uint32_t num_regval_pairs = 0;
 	uint32_t  i, j, size = 0;
 	uint32_t buf_size = 0;
 
+	bus_priv = (struct cam_vfe_bus_rd_ver1_priv  *) priv;
 	update_buf =  (struct cam_isp_hw_get_cmd_update *) cmd_args;
 
 	vfe_bus_rd_data = (struct cam_vfe_bus_rd_ver1_vfe_bus_rd_data *)
@@ -878,8 +876,6 @@ static int cam_vfe_bus_rd_update_rm(void *priv, void *cmd_args,
 		CAM_ERR(CAM_ISP, "Failed! Invalid data");
 		return -EINVAL;
 	}
-
-	cdm_util_ops = vfe_bus_rd_data->cdm_util_ops;
 
 	CAM_DBG(CAM_ISP, "#of RM: %d",  vfe_bus_rd_data->num_rm);
 	if (update_buf->rm_update->num_buf != vfe_bus_rd_data->num_rm) {
@@ -935,32 +931,21 @@ static int cam_vfe_bus_rd_update_rm(void *priv, void *cmd_args,
 
 	}
 
-	num_regval_pairs = j / 2;
+	size = vfe_bus_rd_data->cdm_util_ops->cdm_required_size_reg_random(j/2);
 
-	if (num_regval_pairs) {
-		size = cdm_util_ops->cdm_required_size_reg_random(
-			num_regval_pairs);
-
-		/* cdm util returns dwords, need to convert to bytes */
-		if ((size * 4) > update_buf->cmd.size) {
-			CAM_ERR(CAM_ISP,
-				"Failed! Buf size:%d insufficient, expected size:%d",
-				update_buf->cmd.size, size);
-			return -ENOMEM;
-		}
-
-		cdm_util_ops->cdm_write_regrandom(
-			update_buf->cmd.cmd_buf_addr,
-			num_regval_pairs, reg_val_pair);
-
-		/* cdm util returns dwords, need to convert to bytes */
-		update_buf->cmd.used_bytes = size * 4;
-	} else {
-		update_buf->cmd.used_bytes = 0;
-		CAM_DBG(CAM_ISP,
-			"No reg val pairs. num_rms: %u",
-			vfe_bus_rd_data->num_rm);
+	/* cdm util returns dwords, need to convert to bytes */
+	if ((size * 4) > update_buf->cmd.size) {
+		CAM_ERR(CAM_ISP,
+			"Failed! Buf size:%d insufficient, expected size:%d",
+			update_buf->cmd.size, size);
+		return -ENOMEM;
 	}
+
+	vfe_bus_rd_data->cdm_util_ops->cdm_write_regrandom(
+		update_buf->cmd.cmd_buf_addr, j/2, reg_val_pair);
+
+	/* cdm util returns dwords, need to convert to bytes */
+	update_buf->cmd.used_bytes = size * 4;
 
 	return 0;
 }
@@ -979,6 +964,7 @@ static int cam_vfe_bus_rd_update_fs_cfg(void *priv, void *cmd_args,
 	struct cam_vfe_bus_rd_ver1_rm_resource_data  *rm_data = NULL;
 	struct cam_vfe_fe_update_args                *fe_upd_args;
 	struct cam_fe_config                         *fe_cfg;
+	struct cam_vfe_bus_rd_ver1_common_data        *common_data;
 	int i = 0;
 
 	bus_priv = (struct cam_vfe_bus_rd_ver1_priv  *) priv;
@@ -997,6 +983,7 @@ static int cam_vfe_bus_rd_update_fs_cfg(void *priv, void *cmd_args,
 	for (i = 0; i < vfe_bus_rd_data->num_rm; i++) {
 
 		rm_data = vfe_bus_rd_data->rm_res[i]->res_priv;
+		common_data = rm_data->common_data;
 
 		rm_data->format = fe_cfg->format;
 		rm_data->unpacker_cfg = fe_cfg->unpacker_cfg;
@@ -1121,8 +1108,7 @@ static int cam_vfe_bus_init_hw(void *hw_priv,
 		cam_vfe_bus_rd_ver1_handle_irq,
 		NULL,
 		NULL,
-		NULL,
-		CAM_IRQ_EVT_GROUP_0);
+		NULL);
 
 	if (bus_priv->irq_handle < 1) {
 		CAM_ERR(CAM_ISP, "Failed to subscribe BUS IRQ");
@@ -1186,7 +1172,7 @@ static int cam_vfe_bus_rd_process_cmd(
 	case CAM_ISP_HW_CMD_GET_HFR_UPDATE_RM:
 		rc = cam_vfe_bus_rd_update_hfr(priv, cmd_args, arg_size);
 		break;
-	case CAM_ISP_HW_CMD_GET_RM_SECURE_MODE:
+	case CAM_ISP_HW_CMD_GET_SECURE_MODE:
 		rc = cam_vfe_bus_rd_get_secure_mode(priv, cmd_args, arg_size);
 		break;
 	case CAM_ISP_HW_CMD_FE_UPDATE_BUS_RD:
@@ -1259,7 +1245,7 @@ int cam_vfe_bus_rd_ver1_init(
 
 	rc = cam_irq_controller_init(drv_name, bus_priv->common_data.mem_base,
 		&bus_rd_hw_info->common_reg.irq_reg_info,
-		&bus_priv->common_data.bus_irq_controller);
+		&bus_priv->common_data.bus_irq_controller, true);
 	if (rc) {
 		CAM_ERR(CAM_ISP, "cam_irq_controller_init failed");
 		goto free_bus_priv;
@@ -1269,8 +1255,7 @@ int cam_vfe_bus_rd_ver1_init(
 		rc = cam_vfe_bus_init_rm_resource(i, bus_priv, bus_hw_info,
 			&bus_priv->bus_client[i]);
 		if (rc < 0) {
-			CAM_ERR(CAM_ISP, "Init RM failed for client:%d, rc=%d",
-				i, rc);
+			CAM_ERR(CAM_ISP, "Init RM failed rc=%d", rc);
 			goto deinit_rm;
 		}
 	}
@@ -1279,8 +1264,7 @@ int cam_vfe_bus_rd_ver1_init(
 		rc = cam_vfe_bus_init_vfe_bus_read_resource(i, bus_priv,
 			bus_rd_hw_info);
 		if (rc < 0) {
-			CAM_ERR(CAM_ISP, "Init VFE Out failed for client:%d, rc=%d",
-				i, rc);
+			CAM_ERR(CAM_ISP, "Init VFE Out failed rc=%d", rc);
 			goto deinit_vfe_bus_rd;
 		}
 	}
@@ -1302,6 +1286,8 @@ int cam_vfe_bus_rd_ver1_init(
 	return rc;
 
 deinit_vfe_bus_rd:
+	if (i < 0)
+		i = CAM_VFE_BUS_RD_VER1_VFE_BUSRD_MAX;
 	for (--i; i >= 0; i--)
 		cam_vfe_bus_deinit_vfe_bus_rd_resource(
 			&bus_priv->vfe_bus_rd[i]);

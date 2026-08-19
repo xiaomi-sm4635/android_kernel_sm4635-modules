@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef CAM_JPEG_HW_MGR_H
@@ -17,10 +16,10 @@
 #include "cam_req_mgr_workq.h"
 #include "cam_mem_mgr.h"
 
-#define CAM_JPEG_WORKQ_NUM_TASK             30
-#define CAM_JPEG_WORKQ_TASK_CMD_TYPE        1
-#define CAM_JPEG_WORKQ_TASK_MSG_TYPE        2
-#define CAM_JPEG_HW_CFG_Q_MAX               50
+#define CAM_JPEG_WORKQ_NUM_TASK      30
+#define CAM_JPEG_WORKQ_TASK_CMD_TYPE 1
+#define CAM_JPEG_WORKQ_TASK_MSG_TYPE 2
+#define CAM_JPEG_HW_CFG_Q_MAX        50
 
 /*
  * Response time threshold in ms beyond which a request is not expected
@@ -44,21 +43,16 @@ struct cam_jpeg_process_frame_work_data_t {
 /**
  * struct cam_jpeg_process_irq_work_data_t
  *
- * @type                   : Task type
- * @output_encode_size     : Result size of encoder
- * @is_dma_frame_done      : Flag to indicate whther the dma fram done was recived or not.
- * @irq_status             : IRQ status
- * @data                   : Pointer to message data
+ * @type: Task type
+ * @data: Pointer to message data
+ * @result_size: Result size of enc/dma
+ * @irq_status: IRQ status
  */
 struct cam_jpeg_process_irq_work_data_t {
-	uint32_t       type;
-	union core_data {
-		int32_t        output_encode_size;
-		int32_t        is_dma_frame_done;
-		int32_t        irq_data;
-	} u;
-	uint32_t       irq_status;
-	void          *data;
+	uint32_t type;
+	void *data;
+	int32_t result_size;
+	uint32_t irq_status;
 };
 
 /**
@@ -104,8 +98,6 @@ struct cam_jpeg_hw_cfg_req {
  * @in_use: Flag for context usage
  * @wait_complete: Completion info
  * @cdm_cmd: Cdm cmd submitted for that context.
- * @mini_dump_cb: Mini dump cb
- * @evt_inject_params: Event injection params for hw_mgr_ctx
  */
 struct cam_jpeg_hw_ctx_data {
 	void *context_priv;
@@ -115,8 +107,6 @@ struct cam_jpeg_hw_ctx_data {
 	bool in_use;
 	struct completion wait_complete;
 	struct cam_cdm_bl_request *cdm_cmd;
-	cam_ctx_mini_dump_cb_func      mini_dump_cb;
-	struct cam_hw_inject_evt_param evt_inject_params;
 };
 
 /**
@@ -146,7 +136,6 @@ struct cam_jpeg_hw_ctx_data {
  * @free_req_list: Free nodes for above list
  * @req_list: Nodes of hw update list
  * @num_pid: num of pids supported in the device
- * @mini_dump_cb: Mini dump cb
  */
 struct cam_jpeg_hw_mgr {
 	struct mutex hw_mgr_mutex;
@@ -179,49 +168,6 @@ struct cam_jpeg_hw_mgr {
 	struct list_head free_req_list;
 	struct cam_jpeg_hw_cfg_req req_list[CAM_JPEG_HW_CFG_Q_MAX];
 	uint32_t num_pid[CAM_JPEG_DEV_TYPE_MAX];
-	cam_jpeg_mini_dump_cb      mini_dump_cb;
 };
 
-/**
- * struct cam_jpeg_hw_mini_dump_req
- *
- * @submit_timestamp:        Time stamp of request submit
- * @req_id:                  Request Id
- * @dev_type:                Dev type
- * @num_hw_entry_processed:  Num of hw entry processed
- */
-struct cam_jpeg_hw_mini_dump_req {
-	ktime_t    submit_timestamp;
-	uintptr_t  req_id;
-	uint32_t   dev_type;
-	uint32_t   num_hw_entry_processed;
-};
-
-/**
- * struct cam_jpeg_hw_ctx_mini_dump
- *
- * @acquire_info:        Acquire info
- * @hw_ctx:              hw context info
- * @in_use:              flag to indicate if in use
- */
-struct cam_jpeg_hw_ctx_mini_dump {
-	struct cam_jpeg_acquire_dev_info        acquire_info;
-	struct cam_hw_mini_dump_info            hw_ctx;
-	bool                                    in_use;
-};
-
-/**
- * struct cam_jpeg_hw_mgr_mini_dump
- *
- * @ctx:               Context info array
- * @cfg_req:           Cfg req
- * @core:              core info
- * @num_context:       Num of context
- */
-struct cam_jpeg_hw_mgr_mini_dump {
-	struct cam_jpeg_hw_ctx_mini_dump      *ctx[CAM_JPEG_CTX_MAX];
-	struct cam_jpeg_hw_mini_dump_req       cfg_req[CAM_JPEG_DEV_TYPE_MAX];
-	struct cam_jpeg_mini_dump_core_info    core[CAM_JPEG_RES_TYPE_MAX];
-	uint32_t                               num_context;
-};
 #endif /* CAM_JPEG_HW_MGR_H */

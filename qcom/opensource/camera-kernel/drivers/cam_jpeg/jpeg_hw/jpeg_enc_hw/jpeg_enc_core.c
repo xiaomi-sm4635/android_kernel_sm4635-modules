@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 20222 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of.h>
@@ -23,7 +23,6 @@
 #include "cam_jpeg_hw_mgr_intf.h"
 #include "cam_cpas_api.h"
 #include "cam_debug_util.h"
-#include "cam_common_util.h"
 
 #define CAM_JPEG_HW_IRQ_IS_FRAME_DONE(jpeg_irq_status, hi) \
 	((jpeg_irq_status) & (hi)->int_status.framedone)
@@ -69,7 +68,7 @@ int cam_jpeg_enc_init_hw(void *device_priv,
 	}
 
 	ahb_vote.type = CAM_VOTE_ABSOLUTE;
-	ahb_vote.vote.level = CAM_LOWSVS_D1_VOTE;
+	ahb_vote.vote.level = CAM_LOWSVS_VOTE;
 	axi_vote.num_paths = 2;
 	axi_vote.axi_path[0].path_data_type = CAM_AXI_PATH_DATA_ALL;
 	axi_vote.axi_path[0].transac_type = CAM_AXI_TRANSACTION_READ;
@@ -198,24 +197,22 @@ irqreturn_t cam_jpeg_enc_irq(int irq_num, void *data)
 		core_info->jpeg_enc_hw_info->reg_offset.int_clr);
 	spin_unlock(&jpeg_enc_dev->hw_lock);
 
-	CAM_DBG(CAM_JPEG, "irq_num: %d  irq_status: 0x%x , core_state: %d",
+	CAM_DBG(CAM_JPEG, "irq_num %d  irq_status = %x , core_state %d",
 		irq_num, irq_status, core_info->core_state);
 
 	if (CAM_JPEG_HW_IRQ_IS_FRAME_DONE(irq_status, hw_info)) {
 		spin_lock(&jpeg_enc_dev->hw_lock);
 		if (core_info->core_state == CAM_JPEG_ENC_CORE_READY) {
-			CAM_TRACE(CAM_JPEG, "Ctx %lld ENC FrameDone IRQ",
-				core_info->irq_cb.irq_cb_data.private_data);
+			CAM_TRACE(CAM_JPEG, "FrameDone IRQ");
 			encoded_size = cam_io_r_mb(mem_base +
 			core_info->jpeg_enc_hw_info->reg_offset.encode_size);
 			if (core_info->irq_cb.jpeg_hw_mgr_cb) {
 				core_info->irq_cb.jpeg_hw_mgr_cb(irq_status,
 					encoded_size,
-					(void *)&core_info->irq_cb.irq_cb_data);
+					core_info->irq_cb.data);
 			} else {
 				CAM_ERR(CAM_JPEG, "unexpected done, no cb");
 			}
-			cam_cpas_notify_event("JPEG FrameDone", 0);
 		} else {
 			CAM_ERR(CAM_JPEG, "unexpected done irq");
 		}
@@ -227,8 +224,6 @@ irqreturn_t cam_jpeg_enc_irq(int irq_num, void *data)
 		if (core_info->core_state == CAM_JPEG_ENC_CORE_RESETTING) {
 			core_info->core_state = CAM_JPEG_ENC_CORE_READY;
 			complete(&jpeg_enc_dev->hw_complete);
-			CAM_DBG(CAM_JPEG, "JPEG ENC (%s) reset done",
-				jpeg_enc_dev->soc_info.dev_name);
 		} else {
 			CAM_ERR(CAM_JPEG, "unexpected reset irq");
 		}
@@ -240,8 +235,9 @@ irqreturn_t cam_jpeg_enc_irq(int irq_num, void *data)
 			core_info->core_state = CAM_JPEG_ENC_CORE_NOT_READY;
 			complete(&jpeg_enc_dev->hw_complete);
 			if (core_info->irq_cb.jpeg_hw_mgr_cb) {
-				core_info->irq_cb.jpeg_hw_mgr_cb(irq_status, -1,
-					(void *)&core_info->irq_cb.irq_cb_data);
+				core_info->irq_cb.jpeg_hw_mgr_cb(irq_status,
+					-1,
+					core_info->irq_cb.data);
 			}
 		} else {
 			CAM_ERR(CAM_JPEG, "unexpected abort irq");
@@ -257,8 +253,9 @@ irqreturn_t cam_jpeg_enc_irq(int irq_num, void *data)
 			irq_num, irq_status, core_info->core_state);
 
 		if (core_info->irq_cb.jpeg_hw_mgr_cb) {
-			core_info->irq_cb.jpeg_hw_mgr_cb(irq_status, -1,
-				(void *)&core_info->irq_cb.irq_cb_data);
+			core_info->irq_cb.jpeg_hw_mgr_cb(irq_status,
+				-1,
+				core_info->irq_cb.data);
 		}
 		spin_unlock(&jpeg_enc_dev->hw_lock);
 	}
@@ -276,7 +273,6 @@ int cam_jpeg_enc_reset_hw(void *data,
 	void __iomem *mem_base;
 	unsigned long rem_jiffies;
 	unsigned long flags;
-	int rc = 0;
 
 	if (!jpeg_enc_dev) {
 		CAM_ERR(CAM_JPEG, "Invalid args");
@@ -317,46 +313,14 @@ int cam_jpeg_enc_reset_hw(void *data,
 	cam_io_w_mb(hw_info->reg_val.reset_cmd,
 		mem_base + hw_info->reg_offset.reset_cmd);
 
-	rem_jiffies = cam_common_wait_for_completion_timeout(
-			&jpeg_enc_dev->hw_complete,
-			CAM_JPEG_ENC_RESET_TIMEOUT);
+	rem_jiffies = wait_for_completion_timeout(&jpeg_enc_dev->hw_complete,
+		CAM_JPEG_ENC_RESET_TIMEOUT);
 	if (!rem_jiffies) {
 		CAM_ERR(CAM_JPEG, "error Reset Timeout");
 		core_info->core_state = CAM_JPEG_ENC_CORE_NOT_READY;
-		rc = -ETIMEDOUT;
 	}
 
 	mutex_unlock(&core_info->core_mutex);
-	return rc;
-}
-
-int cam_jpeg_enc_test_irq_line(void *data)
-{
-	struct cam_hw_info *jpeg_enc_dev = data;
-	int rc;
-
-	if (!data) {
-		CAM_ERR(CAM_JPEG, "invalid args");
-		return -EINVAL;
-	}
-
-	rc = cam_jpeg_enc_init_hw(data, NULL, 0);
-	if (rc) {
-		CAM_ERR(CAM_JPEG, "failed to init hw (rc=%d)", rc);
-		return rc;
-	}
-
-	rc = cam_jpeg_enc_reset_hw(data, NULL, 0);
-	if (rc)
-		CAM_ERR(CAM_JPEG, "failed to trigger reset irq (rc=%d)", rc);
-	else
-		CAM_INFO(CAM_JPEG, "verified JPEG DMA (%s) IRQ line",
-			jpeg_enc_dev->soc_info.dev_name);
-
-	rc = cam_jpeg_enc_deinit_hw(data, NULL, 0);
-	if (rc)
-		CAM_ERR(CAM_JPEG, "failed to de-init hw (rc=%d)", rc);
-
 	return 0;
 }
 
@@ -444,9 +408,8 @@ int cam_jpeg_enc_stop_hw(void *data,
 	cam_io_w_mb(hw_info->reg_val.hw_cmd_stop,
 		mem_base + hw_info->reg_offset.hw_cmd);
 
-	rem_jiffies = cam_common_wait_for_completion_timeout(
-			&jpeg_enc_dev->hw_complete,
-			CAM_JPEG_ENC_RESET_TIMEOUT);
+	rem_jiffies = wait_for_completion_timeout(&jpeg_enc_dev->hw_complete,
+		CAM_JPEG_ENC_RESET_TIMEOUT);
 	if (!rem_jiffies) {
 		CAM_ERR(CAM_JPEG, "error Reset Timeout");
 		core_info->core_state = CAM_JPEG_ENC_CORE_NOT_READY;
@@ -531,32 +494,6 @@ int cam_jpeg_enc_hw_dump(
 	return 0;
 }
 
-static int  cam_jpeg_enc_mini_dump(struct cam_hw_info *dev, void *args) {
-
-	struct cam_jpeg_mini_dump_core_info *md;
-	struct cam_jpeg_enc_device_hw_info   *hw_info;
-	struct cam_jpeg_enc_device_core_info *core_info;
-
-	if (!dev || !args) {
-		CAM_ERR(CAM_JPEG, "Invalid params priv %pK args %pK", dev, args);
-		return -EINVAL;
-	}
-
-	core_info = (struct cam_jpeg_enc_device_core_info *)dev->core_info;
-	hw_info = core_info->jpeg_enc_hw_info;
-	md = (struct cam_jpeg_mini_dump_core_info *)args;
-
-	md->framedone = hw_info->int_status.framedone;
-	md->resetdone = hw_info->int_status.resetdone;
-	md->iserror = hw_info->int_status.iserror;
-	md->stopdone = hw_info->int_status.stopdone;
-	md->open_count = dev->open_count;
-	md->hw_state = dev->hw_state;
-	md->ref_count = core_info->ref_count;
-	md->core_state = core_info->core_state;
-	return 0;
-}
-
 int cam_jpeg_enc_dump_camnoc_misr_val(struct cam_jpeg_enc_device_hw_info *hw_info,
 	struct cam_hw_soc_info *soc_info, void *cmd_args)
 {
@@ -612,6 +549,7 @@ int cam_jpeg_enc_dump_camnoc_misr_val(struct cam_jpeg_enc_device_hw_info *hw_inf
 		pmisr_args->req_id,
 		camnoc_misr_val[index][3], camnoc_misr_val[index][2],
 		camnoc_misr_val[index][1], camnoc_misr_val[index][0]);
+	mismatch = false;
 	for (i = 0; i < hw_info->camnoc_misr_sigdata; i++)
 		hw_info->prev_camnoc_misr_val[index][i] = camnoc_misr_val[index][i];
 	/* stop misr : cam_noc_cam_noc_0_req_link_misrprb_MiscCtl_Low */
@@ -742,38 +680,6 @@ int cam_jpeg_enc_config_cmanoc_hw_misr(struct cam_jpeg_enc_device_hw_info *hw_in
 	return 0;
 }
 
-int cam_jpeg_enc_dump_debug_regs(struct cam_hw_info *jpeg_enc_dev)
-{
-	struct cam_hw_soc_info *soc_info = NULL;
-	struct cam_jpeg_enc_device_core_info *core_info = NULL;
-
-	soc_info = &jpeg_enc_dev->soc_info;
-	core_info = (struct cam_jpeg_enc_device_core_info *)jpeg_enc_dev->core_info;
-
-	CAM_INFO(CAM_JPEG, "******** JPEG ENCODER REGISTER DUMP *********");
-
-	/* JPEG DMA TOP, Interrupt, core config, command registers & Fetch Engine Registers*/
-	cam_soc_util_reg_dump(soc_info, CAM_JPEG_MEM_BASE_INDEX,
-		core_info->jpeg_enc_hw_info->debug_reg_offset.top_offset,
-		core_info->jpeg_enc_hw_info->debug_reg_offset.top_range);
-
-	/* Write Engine & Encoder debug registers*/
-	cam_soc_util_reg_dump(soc_info, CAM_JPEG_MEM_BASE_INDEX,
-		core_info->jpeg_enc_hw_info->debug_reg_offset.we_offset,
-		core_info->jpeg_enc_hw_info->debug_reg_offset.we_range);
-
-	/* WE qos cfg, test bus, DMI, spare regs, bus misr, scale reg & MMU prefetch regs */
-	cam_soc_util_reg_dump(soc_info, CAM_JPEG_MEM_BASE_INDEX,
-		core_info->jpeg_enc_hw_info->debug_reg_offset.scale_offset,
-		core_info->jpeg_enc_hw_info->debug_reg_offset.scale_range);
-
-	/* Perf Registers */
-	cam_soc_util_reg_dump(soc_info, CAM_JPEG_MEM_BASE_INDEX,
-		core_info->jpeg_enc_hw_info->debug_reg_offset.perf_offset,
-		core_info->jpeg_enc_hw_info->debug_reg_offset.perf_range);
-	return 0;
-}
-
 int cam_jpeg_enc_process_cmd(void *device_priv, uint32_t cmd_type,
 	void *cmd_args, uint32_t arg_size)
 {
@@ -784,7 +690,6 @@ int cam_jpeg_enc_process_cmd(void *device_priv, uint32_t cmd_type,
 	uint32_t    *num_pid = NULL;
 	struct cam_hw_soc_info               *soc_info = NULL;
 	int i, rc = 0;
-	unsigned long flags = 0;
 
 	if (!device_priv) {
 		CAM_ERR(CAM_JPEG, "Invalid arguments");
@@ -806,26 +711,19 @@ int cam_jpeg_enc_process_cmd(void *device_priv, uint32_t cmd_type,
 	case CAM_JPEG_CMD_SET_IRQ_CB:
 	{
 		struct cam_jpeg_set_irq_cb *irq_cb = cmd_args;
-		struct cam_jpeg_irq_cb_data *irq_cb_data;
 
 		if (!cmd_args) {
 			CAM_ERR(CAM_JPEG, "cmd args NULL");
 			return -EINVAL;
 		}
-
-		irq_cb_data = &irq_cb->irq_cb_data;
-		spin_lock_irqsave(&jpeg_enc_dev->hw_lock, flags);
-
 		if (irq_cb->b_set_cb) {
-			core_info->irq_cb.jpeg_hw_mgr_cb = irq_cb->jpeg_hw_mgr_cb;
-			core_info->irq_cb.irq_cb_data.private_data = irq_cb_data->private_data;
-			core_info->irq_cb.irq_cb_data.jpeg_req = irq_cb_data->jpeg_req;
+			core_info->irq_cb.jpeg_hw_mgr_cb =
+				irq_cb->jpeg_hw_mgr_cb;
+			core_info->irq_cb.data = irq_cb->data;
 		} else {
 			core_info->irq_cb.jpeg_hw_mgr_cb = NULL;
-			core_info->irq_cb.irq_cb_data.private_data = NULL;
-			core_info->irq_cb.irq_cb_data.jpeg_req = NULL;
+			core_info->irq_cb.data = NULL;
 		}
-		spin_unlock_irqrestore(&jpeg_enc_dev->hw_lock, flags);
 		rc = 0;
 		break;
 	}
@@ -876,11 +774,6 @@ int cam_jpeg_enc_process_cmd(void *device_priv, uint32_t cmd_type,
 		}
 
 		break;
-	case CAM_JPEG_CMD_MINI_DUMP:
-	{
-		rc = cam_jpeg_enc_mini_dump(jpeg_enc_dev, cmd_args);
-		break;
-	}
 	case CAM_JPEG_CMD_CONFIG_HW_MISR:
 	{
 		if (hw_info->camnoc_misr_support)
@@ -901,9 +794,6 @@ int cam_jpeg_enc_process_cmd(void *device_priv, uint32_t cmd_type,
 		}
 		break;
 	}
-	case CAM_JPEG_CMD_DUMP_DEBUG_REGS:
-		rc = cam_jpeg_enc_dump_debug_regs(jpeg_enc_dev);
-		break;
 	default:
 		rc = -EINVAL;
 		break;

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -22,36 +21,12 @@
 
 static struct cam_bps_device_hw_info cam_bps_hw_info = {
 	.hw_idx = 0,
-	.pwr_ctrl = 0x48,
-	.pwr_status = 0x44,
-	.top_rst_cmd = 0x1008,
-	.top_irq_status = 0x100C,
-	.cdm_rst_cmd = 0x10,
-	.cdm_irq_status = 0x44,
-	.cdm_rst_val = 0xF,
+	.pwr_ctrl = 0x5c,
+	.pwr_status = 0x58,
+	.reserved = 0,
 };
 
-static struct cam_bps_device_hw_info cam_bps680_hw_info = {
-	.hw_idx = 0,
-	.pwr_ctrl = 0x48,
-	.pwr_status = 0x44,
-	.top_rst_cmd = 0x508,
-	.top_irq_status = 0x50C,
-	.cdm_rst_cmd = 0x10,
-	.cdm_irq_status = 0x44,
-	.cdm_rst_val = 0x7F,
-};
-
-static struct cam_bps_device_hw_info cam_bps880_hw_info = {
-	.hw_idx = 0,
-	.pwr_ctrl = 0x48,
-	.pwr_status = 0x44,
-	.top_rst_cmd = 0x1008,
-	.top_irq_status = 0x100C,
-	.cdm_rst_cmd = 0x10,
-	.cdm_irq_status = 0x44,
-	.cdm_rst_val = 0x7F,
-};
+static char bps_dev_name[8];
 
 static bool cam_bps_cpas_cb(uint32_t client_handle, void *userdata,
 	struct cam_cpas_irq_data *irq_data)
@@ -134,9 +109,13 @@ static int cam_bps_component_bind(struct device *dev,
 		return -ENOMEM;
 	}
 
+	memset(bps_dev_name, 0, sizeof(bps_dev_name));
+	snprintf(bps_dev_name, sizeof(bps_dev_name),
+		"bps%1u", bps_dev_intf->hw_idx);
+
 	bps_dev->soc_info.pdev = pdev;
 	bps_dev->soc_info.dev = &pdev->dev;
-	bps_dev->soc_info.dev_name = pdev->name;
+	bps_dev->soc_info.dev_name = bps_dev_name;
 	bps_dev_intf->hw_priv = bps_dev;
 	bps_dev_intf->hw_ops.init = cam_bps_init_hw;
 	bps_dev_intf->hw_ops.deinit = cam_bps_deinit_hw;
@@ -162,7 +141,7 @@ static int cam_bps_component_bind(struct device *dev,
 		rc = -EINVAL;
 		return rc;
 	}
-	hw_info = (struct cam_bps_device_hw_info *)match_dev->data;
+	hw_info = &cam_bps_hw_info;
 	core_info->bps_hw_info = hw_info;
 
 	rc = cam_bps_init_soc_resources(&bps_dev->soc_info, cam_bps_irq,
@@ -205,12 +184,6 @@ static void cam_bps_component_unbind(struct device *dev,
 
 	CAM_DBG(CAM_ICP, "Unbinding component: %s", pdev->name);
 	bps_dev_intf = platform_get_drvdata(pdev);
-
-	if (!bps_dev_intf) {
-		CAM_ERR(CAM_ICP, "Error No data in pdev");
-		return;
-	}
-
 	bps_dev = bps_dev_intf->hw_priv;
 	core_info = (struct cam_bps_device_core_info *)bps_dev->core_info;
 	cam_cpas_unregister_client(core_info->cpas_handle);
@@ -248,14 +221,6 @@ static const struct of_device_id cam_bps_dt_match[] = {
 	{
 		.compatible = "qcom,cam-bps",
 		.data = &cam_bps_hw_info,
-	},
-	{
-		.compatible = "qcom,cam-bps680",
-		.data = &cam_bps680_hw_info,
-	},
-	{
-		.compatible = "qcom,cam-bps880",
-		.data = &cam_bps880_hw_info,
 	},
 	{}
 };

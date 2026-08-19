@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/device.h>
@@ -78,7 +77,7 @@ static int cam_lrme_dev_open(struct v4l2_subdev *sd,
 	return 0;
 }
 
-static int cam_lrme_dev_close_internal(struct v4l2_subdev *sd,
+int cam_lrme_dev_close_internal(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh)
 {
 	int rc = 0;
@@ -115,7 +114,7 @@ end:
 static int cam_lrme_dev_close(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh)
 {
-	bool crm_active = cam_req_mgr_is_open();
+	bool crm_active = cam_req_mgr_is_open(CAM_LRME);
 
 	if (crm_active) {
 		CAM_DBG(CAM_LRME, "CRM is ACTIVE, close should be from CRM");
@@ -165,7 +164,7 @@ static int cam_lrme_component_bind(struct device *dev,
 	for (i = 0; i < CAM_CTX_MAX; i++) {
 		rc = cam_lrme_context_init(&g_lrme_dev->lrme_ctx[i],
 				&g_lrme_dev->ctx[i],
-				&node->hw_mgr_intf, i, -1);
+				&node->hw_mgr_intf, i);
 		if (rc) {
 			CAM_ERR(CAM_LRME, "LRME context init failed");
 			goto deinit_ctx;
@@ -179,7 +178,6 @@ static int cam_lrme_component_bind(struct device *dev,
 		goto deinit_ctx;
 	}
 
-	node->sd_handler = cam_lrme_dev_close_internal;
 	CAM_DBG(CAM_LRME, "Component bound successfully");
 
 	return 0;

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of.h>
@@ -42,28 +41,9 @@ static int cam_ois_get_dt_data(struct cam_ois_ctrl_t *o_ctrl)
 		return rc;
 	}
 
-	rc = of_property_read_bool(of_node, "i3c-target");
-	if (rc) {
-		o_ctrl->is_i3c_device = true;
-		o_ctrl->io_master_info.master_type = I3C_MASTER;
-	}
-
-	CAM_DBG(CAM_SENSOR, "I3C Target: %s", CAM_BOOL_TO_YESNO(o_ctrl->is_i3c_device));
-
-	/* Initialize regulators to default parameters */
-	for (i = 0; i < soc_info->num_rgltr; i++) {
-		soc_info->rgltr[i] = devm_regulator_get(soc_info->dev,
-					soc_info->rgltr_name[i]);
-		if (IS_ERR_OR_NULL(soc_info->rgltr[i])) {
-			rc = PTR_ERR(soc_info->rgltr[i]);
-			rc = rc ? rc : -EINVAL;
-			CAM_ERR(CAM_OIS, "get failed for regulator %s",
-				 soc_info->rgltr_name[i]);
-			return rc;
-		}
-		CAM_DBG(CAM_OIS, "get for regulator %s",
-			soc_info->rgltr_name[i]);
-	}
+	rc = cam_sensor_util_regulator_powerup(soc_info);
+	if (rc < 0)
+		return rc;
 
 	if (!soc_info->gpio_data) {
 		CAM_INFO(CAM_OIS, "No GPIO found");
@@ -85,15 +65,11 @@ static int cam_ois_get_dt_data(struct cam_ois_ctrl_t *o_ctrl)
 	for (i = 0; i < soc_info->num_clk; i++) {
 		soc_info->clk[i] = devm_clk_get(soc_info->dev,
 			soc_info->clk_name[i]);
-		if (IS_ERR(soc_info->clk[i])) {
-			CAM_ERR(CAM_OIS, "get failed for %s",
+		if (!soc_info->clk[i]) {
+			CAM_ERR(CAM_SENSOR, "get failed for %s",
 				soc_info->clk_name[i]);
 			rc = -ENOENT;
 			return rc;
-		} else if (!soc_info->clk[i]) {
-			CAM_DBG(CAM_OIS, "%s handle is NULL skip get",
-				soc_info->clk_name[i]);
-			continue;
 		}
 	}
 
@@ -139,6 +115,7 @@ int cam_ois_driver_soc_init(struct cam_ois_ctrl_t *o_ctrl)
 
 		o_ctrl->io_master_info.cci_client->cci_device = o_ctrl->cci_num;
 		CAM_DBG(CAM_OIS, "cci-device %d", o_ctrl->cci_num, rc);
+
 	}
 
 	rc = cam_ois_get_dt_data(o_ctrl);

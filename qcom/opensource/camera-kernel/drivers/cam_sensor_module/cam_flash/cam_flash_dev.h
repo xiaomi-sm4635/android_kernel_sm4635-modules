@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2017-2021,The Linux Foundation. All rights reserved.
  */
 
 #ifndef _CAM_FLASH_DEV_H_
@@ -22,8 +21,7 @@
 
 #if IS_REACHABLE(CONFIG_LEDS_QPNP_FLASH_V2) || IS_REACHABLE(CONFIG_BACKLIGHT_QCOM_SPMI_WLED)
 #include <linux/leds-qpnp-flash.h>
-#endif
-#if IS_REACHABLE(CONFIG_LEDS_QTI_FLASH)
+#elif IS_REACHABLE(CONFIG_LEDS_QTI_FLASH)
 #include <linux/leds-qti-flash.h>
 #endif
 
@@ -32,6 +30,7 @@
 #include "cam_subdev.h"
 #include "cam_mem_mgr.h"
 #include "cam_sensor_cmn_header.h"
+#include "cam_sensor_util.h"
 #include "cam_soc_util.h"
 #include "cam_debug_util.h"
 #include "cam_sensor_io.h"
@@ -42,11 +41,15 @@
 
 #define CAM_FLASH_PIPELINE_DELAY 1
 
-#define FLASH_DRIVER_I2C "cam-i2c-flash"
+#define FLASH_DRIVER_I2C "i2c_flash"
 
 #define CAM_FLASH_PACKET_OPCODE_INIT                 0
 #define CAM_FLASH_PACKET_OPCODE_SET_OPS              1
 #define CAM_FLASH_PACKET_OPCODE_NON_REALTIME_SET_OPS 2
+#define CAM_FLASH_PACKET_OPCODE_STREAM_OFF           3
+
+#define QUERY_CURRENT 1
+#define QUERY_CURRENT_VAL (1 << 2)
 
 struct cam_flash_ctrl;
 
@@ -110,14 +113,13 @@ struct cam_flash_init_packet {
 
 /**
  * struct flash_frame_setting
- * @cmn_attr              : Provides common attributes
- * @num_iterations        : Iterations used to perform RER
- * @led_on_delay_ms       : LED on time in milisec
- * @led_off_delay_ms      : LED off time in milisec
- * @opcode                : Command buffer opcode
- * @led_current_ma[]      : LED current array in miliamps
- * @flash_active_time_ms  : Flash_On time with precise flash
- * @flash_on_wait_time_ms : Flash on wait time with precise flash
+ * @cmn_attr             : Provides common attributes
+ * @num_iterations       : Iterations used to perform RER
+ * @led_on_delay_ms      : LED on time in milisec
+ * @led_off_delay_ms     : LED off time in milisec
+ * @opcode               : Command buffer opcode
+ * @led_current_ma[]     : LED current array in miliamps
+ * @flash_active_time_ms : Flash_On time with precise flash
  */
 struct cam_flash_frame_setting {
 	struct cam_flash_common_attr cmn_attr;
@@ -127,7 +129,6 @@ struct cam_flash_frame_setting {
 	int8_t                       opcode;
 	uint32_t                     led_current_ma[CAM_FLASH_MAX_LED_TRIGGERS];
 	uint64_t                     flash_active_time_ms;
-	uint64_t                     flash_on_wait_time_ms;
 };
 
 /**
@@ -141,6 +142,7 @@ struct cam_flash_frame_setting {
  * @torch_op_current    : Torch operational current
  * @torch_max_current   : Max supported current for LED in torch mode
  * @is_wled_flash       : Detection between WLED/LED flash
+ * @flash_type          : Flash type
  */
 
 struct cam_flash_private_soc {
@@ -153,6 +155,7 @@ struct cam_flash_private_soc {
 	uint32_t     torch_op_current[CAM_FLASH_MAX_LED_TRIGGERS];
 	uint32_t     torch_max_current[CAM_FLASH_MAX_LED_TRIGGERS];
 	bool         is_wled_flash;
+	uint32_t     flash_type;
 };
 
 struct cam_flash_func_tbl {
@@ -190,6 +193,8 @@ struct cam_flash_func_tbl {
  * @io_master_info      : Information about the communication master
  * @i2c_data            : I2C register settings
  * @last_flush_req      : last request to flush
+ * @streamoff_count     : Count to hold the number of times stream off called
+ * @apply_streamoff     : variable to store when to apply stream off
  */
 struct cam_flash_ctrl {
 	char device_name[CAM_CTX_DEV_NAME_MAX_LENGTH];
@@ -218,6 +223,14 @@ struct cam_flash_ctrl {
 	struct camera_io_master             io_master_info;
 	struct i2c_data_settings            i2c_data;
 	uint32_t                            last_flush_req;
+	uint32_t                            streamoff_count;
+	int32_t                             apply_streamoff;
+	//------add flash node-chenkailin-2024/4/12 start
+	uint32_t                            enm_gpio;
+    uint32_t                            enf_gpio;
+	struct led_classdev                 cdev;
+	uint32_t                               brightness;
+	//------add flash node-chenkailin-2024/4/12 end
 };
 
 int cam_flash_pmic_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg);

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -10,21 +9,11 @@
 #include "cam_vfe175.h"
 #include "cam_vfe175_130.h"
 #include "cam_vfe480.h"
-#include "cam_vfe570.h"
 #include "cam_vfe580.h"
-#include "cam_vfe680.h"
-#include "cam_vfe680_110.h"
-#include "cam_vfe780.h"
-#include "cam_vfe860.h"
-#include "cam_vfe880.h"
-#include "cam_tfe980.h"
+#include "cam_vfe165_160.h"
 #include "cam_vfe_lite17x.h"
 #include "cam_vfe_lite48x.h"
-#include "cam_vfe_lite68x.h"
-#include "cam_vfe_lite78x.h"
-#include "cam_vfe_lite86x.h"
-#include "cam_vfe_lite88x.h"
-#include "cam_vfe_lite98x.h"
+#include "cam_vfe_lite16x.h"
 #include "cam_vfe_hw_intf.h"
 #include "cam_vfe_core.h"
 #include "cam_vfe_dev.h"
@@ -52,36 +41,12 @@ static const struct of_device_id cam_vfe_dt_match[] = {
 		.data = &cam_vfe480_hw_info,
 	},
 	{
-		.compatible = "qcom,vfe570",
-		.data = &cam_vfe570_hw_info,
-	},
-	{
 		.compatible = "qcom,vfe580",
 		.data = &cam_vfe580_hw_info,
 	},
 	{
-		.compatible = "qcom,vfe680",
-		.data = &cam_vfe680_hw_info,
-	},
-	{
-		.compatible = "qcom,vfe680_110",
-		.data = &cam_vfe680_110_hw_info,
-	},
-	{
-		.compatible = "qcom,vfe780",
-		.data = &cam_vfe780_hw_info,
-	},
-	{
-		.compatible = "qcom,vfe860",
-		.data = &cam_vfe860_hw_info,
-	},
-	{
-		.compatible = "qcom,vfe880",
-		.data = &cam_vfe880_hw_info,
-	},
-	{
-		.compatible = "qcom,tfe980",
-		.data  = &cam_tfe980_hw_info,
+		.compatible = "qcom,vfe165_160",
+		.data = &cam_vfe165_160_hw_info,
 	},
 	{
 		.compatible = "qcom,vfe-lite170",
@@ -96,36 +61,12 @@ static const struct of_device_id cam_vfe_dt_match[] = {
 		.data = &cam_vfe_lite48x_hw_info,
 	},
 	{
-		.compatible = "qcom,vfe-lite570",
-		.data = &cam_vfe_lite48x_hw_info,
-	},
-	{
 		.compatible = "qcom,vfe-lite580",
 		.data = &cam_vfe_lite48x_hw_info,
 	},
 	{
-		.compatible = "qcom,vfe-lite680",
-		.data = &cam_vfe_lite68x_hw_info,
-	},
-	{
-		.compatible = "qcom,vfe-lite680_110",
-		.data = &cam_vfe_lite68x_hw_info,
-	},
-	{
-		.compatible = "qcom,vfe-lite780",
-		.data = &cam_vfe_lite78x_hw_info,
-	},
-	{
-		.compatible = "qcom,vfe-lite860",
-		.data = &cam_vfe_lite86x_hw_info,
-	},
-	{
-		.compatible = "qcom,vfe-lite880",
-		.data = &cam_vfe_lite88x_hw_info,
-	},
-	{
-		.compatible = "qcom,vfe-lite980",
-		.data = &cam_vfe_lite98x_hw_info,
+		.compatible = "qcom,vfe-lite165",
+		.data = &cam_vfe_lite16x_hw_info,
 	},
 	{}
 };

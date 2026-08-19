@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/slab.h>
@@ -133,7 +133,9 @@ static int cam_vfe_camif_err_irq_top_half(
 			th_payload->evt_status_arr[1]);
 		CAM_ERR(CAM_ISP, "Stopping further IRQ processing from vfe=%d",
 			camif_node->hw_intf->hw_idx);
-		cam_irq_controller_disable_all(
+		cam_irq_controller_disable_irq(camif_priv->vfe_irq_controller,
+			camif_priv->irq_err_handle);
+		cam_irq_controller_clear_and_mask(evt_id,
 			camif_priv->vfe_irq_controller);
 		error_flag = true;
 	}
@@ -353,6 +355,7 @@ static int cam_vfe_camif_resource_start(
 	uint32_t                        epoch0_irq_mask;
 	uint32_t                        epoch1_irq_mask;
 	uint32_t                        computed_epoch_line_cfg;
+	int                             rc = 0;
 	uint32_t                        err_irq_mask[CAM_IFE_IRQ_REGISTERS_MAX];
 	uint32_t                        irq_mask[CAM_IFE_IRQ_REGISTERS_MAX];
 	uint32_t                        dual_vfe_sync_val;
@@ -487,10 +490,10 @@ static int cam_vfe_camif_resource_start(
 			camif_res->top_half_handler,
 			camif_res->bottom_half_handler,
 			camif_res->tasklet_info,
-			&tasklet_bh_api,
-			CAM_IRQ_EVT_GROUP_0);
+			&tasklet_bh_api);
 		if (rsrc_data->irq_handle < 1) {
 			CAM_ERR(CAM_ISP, "IRQ handle subscribe failure");
+			rc = -ENOMEM;
 			rsrc_data->irq_handle = 0;
 		}
 	}
@@ -505,10 +508,10 @@ subscribe_err:
 			cam_vfe_camif_err_irq_top_half,
 			camif_res->bottom_half_handler,
 			camif_res->tasklet_info,
-			&tasklet_bh_api,
-			CAM_IRQ_EVT_GROUP_0);
+			&tasklet_bh_api);
 		if (rsrc_data->irq_err_handle < 1) {
 			CAM_ERR(CAM_ISP, "Error IRQ handle subscribe failure");
+			rc = -ENOMEM;
 			rsrc_data->irq_err_handle = 0;
 		}
 	}
@@ -521,7 +524,6 @@ static int cam_vfe_camif_reg_dump(
 	struct cam_isp_resource_node *camif_res)
 {
 	struct cam_vfe_mux_camif_data *camif_priv;
-	struct cam_vfe_soc_private *soc_private;
 	uint32_t offset, val, wm_idx;
 
 	if (!camif_res) {
@@ -553,9 +555,6 @@ static int cam_vfe_camif_reg_dump(
 		}
 	}
 
-	soc_private = camif_priv->soc_info->soc_private;
-	cam_cpas_dump_camnoc_buff_fill_info(soc_private->cpas_handle);
-
 	return 0;
 }
 
@@ -563,6 +562,7 @@ static int cam_vfe_camif_resource_stop(
 	struct cam_isp_resource_node        *camif_res)
 {
 	struct cam_vfe_mux_camif_data       *camif_priv;
+	struct cam_vfe_camif_ver2_reg       *camif_reg;
 	int rc = 0;
 	uint32_t val = 0;
 
@@ -576,6 +576,7 @@ static int cam_vfe_camif_resource_stop(
 		return 0;
 
 	camif_priv = (struct cam_vfe_mux_camif_data *)camif_res->res_priv;
+	camif_reg = camif_priv->camif_reg;
 
 	if ((camif_priv->dsp_mode >= CAM_ISP_DSP_MODE_ONE_WAY) &&
 		(camif_priv->dsp_mode <= CAM_ISP_DSP_MODE_ROUND)) {
@@ -637,7 +638,7 @@ int cam_vfe_camif_dump_timestamps(
 		(struct cam_vfe_mux_camif_data *)rsrc_node->res_priv;
 
 	CAM_INFO(CAM_ISP,
-		"CAMIF ERROR timestamp:[%lld.%09lld] SOF timestamp:[%lld.%09lld] EPOCH timestamp:[%lld.%09lld] EOF timestamp:[%lld.%09lld]",
+		"CAMIF ERROR time %lld:%lld SOF %lld:%lld EPOCH %lld:%lld EOF %lld:%lld",
 		camif_priv->error_ts.tv_sec,
 		camif_priv->error_ts.tv_nsec,
 		camif_priv->sof_ts.tv_sec,
@@ -760,7 +761,6 @@ static int cam_vfe_camif_handle_irq_bottom_half(void *handler_priv,
 	uint32_t                              irq_status0;
 	uint32_t                              irq_status1;
 	uint32_t                              val;
-	struct cam_isp_hw_error_event_info    err_evt_info;
 	struct timespec64                     ts;
 
 	if (!handler_priv || !evt_payload_priv) {
@@ -777,7 +777,6 @@ static int cam_vfe_camif_handle_irq_bottom_half(void *handler_priv,
 	soc_info = camif_priv->soc_info;
 	soc_private = (struct cam_vfe_soc_private *)soc_info->soc_private;
 
-	evt_info.hw_type  = CAM_ISP_HW_TYPE_VFE;
 	evt_info.hw_idx   = camif_node->hw_intf->hw_idx;
 	evt_info.res_id   = camif_node->res_id;
 	evt_info.res_type = camif_node->res_type;
@@ -854,16 +853,23 @@ static int cam_vfe_camif_handle_irq_bottom_half(void *handler_priv,
 	if (irq_status0 & camif_priv->reg_data->error_irq_mask0) {
 		CAM_DBG(CAM_ISP, "Received ERROR");
 
-		err_evt_info.err_type = CAM_VFE_IRQ_STATUS_OVERFLOW;
-		evt_info.event_data = (void *)&err_evt_info;
 		ktime_get_boottime_ts64(&ts);
 		CAM_INFO(CAM_ISP,
-			"current monotonic timestamp:[%lld.%09lld]",
-			ts.tv_sec, ts.tv_nsec);
+			"current monotonic time stamp seconds %lld:%lld",
+			ts.tv_sec, ts.tv_nsec/1000);
 
 		if (camif_priv->event_cb)
 			camif_priv->event_cb(camif_priv->priv,
 				CAM_ISP_HW_EVENT_ERROR, (void *)&evt_info);
+
+		CAM_INFO(CAM_ISP,
+			"SOF %lld:%lld EPOCH %lld:%lld EOF %lld:%lld",
+			camif_priv->sof_ts.tv_sec,
+			camif_priv->sof_ts.tv_nsec,
+			camif_priv->epoch_ts.tv_sec,
+			camif_priv->epoch_ts.tv_nsec,
+			camif_priv->eof_ts.tv_sec,
+			camif_priv->eof_ts.tv_nsec);
 
 		CAM_INFO(CAM_ISP, "Violation status = %x",
 			payload->irq_reg_val[2]);
@@ -873,7 +879,10 @@ static int cam_vfe_camif_handle_irq_bottom_half(void *handler_priv,
 		CAM_INFO(CAM_ISP, "ife_clk_src:%lld",
 			soc_private->ife_clk_src);
 
-		cam_cpas_log_votes(false);
+		cam_cpas_get_camnoc_fifo_fill_level_info(
+			soc_private->cpas_version,
+			soc_private->cpas_handle);
+		cam_cpas_log_votes();
 
 		if (camif_priv->camif_debug & CAMIF_DEBUG_ENABLE_REG_DUMP)
 			cam_vfe_camif_reg_dump(camif_node->res_priv);
@@ -882,12 +891,18 @@ static int cam_vfe_camif_handle_irq_bottom_half(void *handler_priv,
 	if (irq_status1 & camif_priv->reg_data->error_irq_mask1) {
 		CAM_DBG(CAM_ISP, "Received ERROR");
 
-		err_evt_info.err_type = CAM_VFE_IRQ_STATUS_OVERFLOW;
-		evt_info.event_data = (void *)&err_evt_info;
+		CAM_INFO(CAM_ISP,
+			"SOF %lld:%lld EPOCH %lld:%lld EOF %lld:%lld",
+			camif_priv->sof_ts.tv_sec,
+			camif_priv->sof_ts.tv_nsec,
+			camif_priv->epoch_ts.tv_sec,
+			camif_priv->epoch_ts.tv_nsec,
+			camif_priv->eof_ts.tv_sec,
+			camif_priv->eof_ts.tv_nsec);
 		ktime_get_boottime_ts64(&ts);
 		CAM_INFO(CAM_ISP,
-			"current monotonic timestamp:[%lld.%09lld]",
-			ts.tv_sec, ts.tv_nsec);
+			"current monotonic time stamp seconds %lld:%lld",
+			ts.tv_sec, ts.tv_nsec/1000);
 
 		if (camif_priv->event_cb)
 			camif_priv->event_cb(camif_priv->priv,
@@ -901,7 +916,10 @@ static int cam_vfe_camif_handle_irq_bottom_half(void *handler_priv,
 		CAM_INFO(CAM_ISP, "ife_clk_src:%lld",
 			soc_private->ife_clk_src);
 
-		cam_cpas_log_votes(false);
+		cam_cpas_get_camnoc_fifo_fill_level_info(
+			soc_private->cpas_version,
+			soc_private->cpas_handle);
+		cam_cpas_log_votes();
 
 		if (camif_priv->camif_debug & CAMIF_DEBUG_ENABLE_REG_DUMP)
 			cam_vfe_camif_reg_dump(camif_node->res_priv);
@@ -973,11 +991,6 @@ int cam_vfe_camif_ver2_deinit(
 	struct cam_vfe_mux_camif_data *camif_priv = camif_node->res_priv;
 	int                            i = 0;
 
-	if (!camif_priv) {
-		CAM_ERR(CAM_ISP, "Error! camif_priv is NULL");
-		return -ENODEV;
-	}
-
 	INIT_LIST_HEAD(&camif_priv->free_payload_list);
 	for (i = 0; i < CAM_VFE_CAMIF_EVT_MAX; i++)
 		INIT_LIST_HEAD(&camif_priv->evt_payload[i].list);
@@ -990,6 +1003,10 @@ int cam_vfe_camif_ver2_deinit(
 
 	camif_node->res_priv = NULL;
 
+	if (!camif_priv) {
+		CAM_ERR(CAM_ISP, "Error! camif_priv is NULL");
+		return -ENODEV;
+	}
 
 	kfree(camif_priv);
 

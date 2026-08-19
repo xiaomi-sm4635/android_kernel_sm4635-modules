@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2017-2018, 2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
 #include "cam_subdev.h"
@@ -47,6 +46,7 @@ static long cam_subdev_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
 	struct cam_node *node =
 		(struct cam_node *) v4l2_get_subdevdata(sd);
 	struct v4l2_subdev_fh *fh = (struct v4l2_subdev_fh *)arg;
+	struct cam_control cntrl_cmd;
 
 	if (!node || node->state == CAM_NODE_STATE_UNINIT) {
 		rc = -EINVAL;
@@ -66,19 +66,12 @@ static long cam_subdev_ioctl(struct v4l2_subdev *sd, unsigned int cmd,
 			return 0;
 		}
 
-		if (!node->sd_handler) {
-			CAM_ERR(CAM_CORE,
-				"No shutdown routine for %s", node->name);
-			rc = -EINVAL;
-			goto end;
-		}
-
-		CAM_DBG(CAM_CORE, "Shutdown for %s from media device", node->name);
-		rc = node->sd_handler(sd, fh);
+		cntrl_cmd.op_code = CAM_SD_SHUTDOWN;
+		cntrl_cmd.handle = (uint64_t)sd;
+		rc = cam_node_handle_shutdown_dev(node, &cntrl_cmd, fh);
 		if (rc)
-			CAM_ERR(CAM_CORE,
-				"shutdown device failed(rc = %d) for %s",
-				rc, node->name);
+			CAM_ERR(CAM_CORE, "shutdown device failed(rc = %d)",
+				rc);
 		break;
 	default:
 		CAM_ERR(CAM_CORE, "Invalid command %d for %s", cmd,
@@ -138,7 +131,6 @@ int cam_subdev_remove(struct cam_subdev *sd)
 	cam_unregister_subdev(sd);
 	cam_node_deinit((struct cam_node *)sd->token);
 	kfree(sd->token);
-	memset(sd, 0, sizeof(struct cam_subdev));
 
 	return 0;
 }

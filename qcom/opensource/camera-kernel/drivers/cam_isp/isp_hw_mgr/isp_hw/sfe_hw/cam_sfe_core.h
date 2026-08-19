@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2020, The Linux Foundation. All rights reserved.
  */
 
 #ifndef _CAM_SFE_CORE_H_
 #define _CAM_SFE_CORE_H_
 
-#include <linux/spinlock_types.h>
+#include <linux/spinlock.h>
 #include "cam_hw_intf.h"
 #include "cam_sfe_hw_intf.h"
 #include "cam_sfe_bus.h"
@@ -37,23 +37,6 @@ struct cam_sfe_hw_core_info {
 	spinlock_t                          spin_lock;
 };
 
-/*
- * Debug config to enable interrupts and debug features
- */
-#define SFE_DEBUG_ENABLE_SOF_EOF_IRQ              BIT(0)
-#define SFE_DEBUG_ENABLE_SENSOR_DIAG_INFO         BIT(1)
-#define SFE_DEBUG_ENABLE_FRAME_COUNTER            BIT(2)
-#define SFE_DEBUG_ENABLE_RD_DONE_IRQ              BIT(3)
-#define SFE_DEBUG_DISABLE_MMU_PREFETCH            BIT(4)
-#define SFE_DEBUG_ENABLE_TESTBUS1                 BIT(8)
-#define SFE_DEBUG_ENABLE_TESTBUS2                 BIT(9)
-
-/* Reserve 4 bits for future test-busses in debug config */
-#define SFE_DEBUG_ENABLE_TESTBUS_RESERVED1        BIT(10)
-#define SFE_DEBUG_ENABLE_TESTBUS_RESERVED2        BIT(11)
-#define SFE_DEBUG_ENABLE_TESTBUS_RESERVED3        BIT(12)
-#define SFE_DEBUG_ENABLE_TESTBUS_RESERVED4        BIT(13)
-
 int cam_sfe_get_hw_caps(void *device_priv,
 	void *get_hw_cap_args, uint32_t arg_size);
 int cam_sfe_reset(void *device_priv,
@@ -76,7 +59,6 @@ int cam_sfe_stop(void *device_priv,
 	void *stop_args, uint32_t arg_size);
 int cam_sfe_process_cmd(void *device_priv, uint32_t cmd_type,
 	void *cmd_args, uint32_t arg_size);
-int cam_sfe_test_irq_line(void *hw_priv);
 
 irqreturn_t cam_sfe_irq(int irq_num, void *data);
 

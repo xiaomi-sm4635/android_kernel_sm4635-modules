@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_TFE_CSID_530_H_
@@ -43,8 +43,6 @@ static struct cam_tfe_csid_pxl_reg_offset  cam_tfe_csid_530_ipp_reg_offset = {
 	.halt_mode_shift                     = 2,
 	.halt_master_sel_master_val          = 3,
 	.halt_master_sel_slave_val           = 0,
-	.binning_supported                   = 0,
-	.is_multi_vc_dt_supported            = false,
 };
 
 static struct cam_tfe_csid_rdi_reg_offset cam_tfe_csid_530_rdi_0_reg_offset = {
@@ -73,8 +71,6 @@ static struct cam_tfe_csid_rdi_reg_offset cam_tfe_csid_530_rdi_0_reg_offset = {
 	.csid_rdi_err_recovery_cfg2_addr          = 0x3b8,
 	.csid_rdi_byte_cntr_ping_addr             = 0x3e0,
 	.csid_rdi_byte_cntr_pong_addr             = 0x3e4,
-	/* configurations */
-	.is_multi_vc_dt_supported                 = false,
 };
 
 static struct cam_tfe_csid_rdi_reg_offset cam_tfe_csid_530_rdi_1_reg_offset = {
@@ -103,8 +99,6 @@ static struct cam_tfe_csid_rdi_reg_offset cam_tfe_csid_530_rdi_1_reg_offset = {
 	.csid_rdi_err_recovery_cfg2_addr          = 0x4b8,
 	.csid_rdi_byte_cntr_ping_addr             = 0x4e0,
 	.csid_rdi_byte_cntr_pong_addr             = 0x4e4,
-	/* configurations */
-	.is_multi_vc_dt_supported                 = false,
 };
 
 static struct cam_tfe_csid_rdi_reg_offset cam_tfe_csid_530_rdi_2_reg_offset = {
@@ -133,8 +127,6 @@ static struct cam_tfe_csid_rdi_reg_offset cam_tfe_csid_530_rdi_2_reg_offset = {
 	.csid_rdi_err_recovery_cfg2_addr          = 0x5b8,
 	.csid_rdi_byte_cntr_ping_addr             = 0x5e0,
 	.csid_rdi_byte_cntr_pong_addr             = 0x5e4,
-	/* configurations */
-	.is_multi_vc_dt_supported                 = false,
 };
 
 static struct cam_tfe_csid_csi2_rx_reg_offset
@@ -162,7 +154,6 @@ static struct cam_tfe_csid_csi2_rx_reg_offset
 	.csid_csi2_rx_stats_ecc_addr                  = 0x164,
 	.csid_csi2_rx_total_crc_err_addr              = 0x168,
 
-	.phy_tpg_base_id                              = 0,
 	.csi2_rst_srb_all                             = 0x3FFF,
 	.csi2_rst_done_shift_val                      = 27,
 	.csi2_irq_mask_all                            = 0xFFFFFFF,
@@ -179,7 +170,6 @@ static struct cam_tfe_csid_csi2_rx_reg_offset
 	.csi2_rx_long_pkt_hdr_rst_stb_shift           = 0x1,
 	.csi2_rx_short_pkt_hdr_rst_stb_shift          = 0x2,
 	.csi2_rx_cphy_pkt_hdr_rst_stb_shift           = 0x3,
-	.need_to_sel_tpg_mux                          = false,
 };
 
 static struct cam_tfe_csid_common_reg_offset
@@ -221,7 +211,6 @@ static struct cam_tfe_csid_common_reg_offset
 	.rdi_irq_mask_all                             = 0x3FFFF,
 	.top_tfe2_pix_pipe_fuse_reg                   = 0xFE4,
 	.top_tfe2_fuse_reg                            = 0xFE8,
-	.format_measure_support                       = false,
 };
 
 static struct cam_tfe_csid_reg_offset cam_tfe_csid_530_reg_offset = {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/slab.h>
@@ -11,7 +11,6 @@
 #include "cam_context.h"
 #include "cam_debug_util.h"
 #include "cam_node.h"
-#include "cam_context_utils.h"
 
 static int cam_context_handle_hw_event(void *context, uint32_t evt_id,
 	void *evt_data)
@@ -291,48 +290,10 @@ int cam_context_handle_crm_dump_req(struct cam_context *ctx,
 	return rc;
 }
 
-int cam_context_mini_dump_from_hw(struct cam_context *ctx,
-	void  *args)
+int cam_context_dump_pf_info(struct cam_context *ctx,
+	struct cam_smmu_pf_info *pf_info)
 {
 	int rc = 0;
-
-	if (!ctx->state_machine) {
-		CAM_ERR(CAM_CORE, "Context [id %d name:%s] is not ready", ctx->ctx_id,
-			ctx->dev_name);
-		return -EINVAL;
-	}
-
-	if ((ctx->state >= CAM_CTX_AVAILABLE) && (ctx->state < CAM_CTX_STATE_MAX)) {
-		if (ctx->state_machine[ctx->state].mini_dump_ops)
-			rc = ctx->state_machine[ctx->state].mini_dump_ops(ctx, args);
-		else
-			CAM_WARN(CAM_CORE, "No dump ctx in dev %d, state %d",
-				ctx->dev_hdl, ctx->state);
-	}
-	return rc;
-}
-
-int cam_context_dump_pf_info(void *data, void *args)
-{
-	struct cam_context *ctx = data;
-	struct cam_hw_dump_pf_args *pf_args = args;
-	int rc = 0;
-
-	if (!pf_args) {
-		CAM_ERR(CAM_CORE, "PF args is NULL");
-		return -EINVAL;
-	}
-
-	if (!ctx) {
-		CAM_ERR(CAM_CORE, "Context is NULL");
-		if (pf_args->pf_context_info.force_send_pf_evt) {
-			rc = cam_context_send_pf_evt(ctx, pf_args);
-			if (rc)
-				CAM_ERR(CAM_CORE,
-					"Failed to notify PF event to userspace rc: %d", rc);
-		}
-		return -EINVAL;
-	}
 
 	if (!ctx->state_machine) {
 		CAM_ERR(CAM_CORE, "Context is not ready");
@@ -344,7 +305,7 @@ int cam_context_dump_pf_info(void *data, void *args)
 		(ctx->state < CAM_CTX_STATE_MAX)) {
 		if (ctx->state_machine[ctx->state].pagefault_ops) {
 			rc = ctx->state_machine[ctx->state].pagefault_ops(
-				ctx, pf_args);
+				ctx, pf_info);
 		} else {
 			CAM_WARN(CAM_CORE, "No dump ctx in dev %d, state %d",
 				ctx->dev_hdl, ctx->state);
@@ -356,7 +317,7 @@ int cam_context_dump_pf_info(void *data, void *args)
 }
 
 int cam_context_handle_message(struct cam_context *ctx,
-	uint32_t msg_type, void *data)
+	uint32_t msg_type, uint32_t *data)
 {
 	int rc = 0;
 
@@ -557,7 +518,7 @@ int cam_context_handle_config_dev(struct cam_context *ctx,
 		rc = ctx->state_machine[ctx->state].ioctl_ops.config_dev(
 			ctx, cmd);
 	} else {
-		CAM_INFO(CAM_CORE, "No config device in dev %d, state %d",
+		CAM_ERR(CAM_CORE, "No config device in dev %d, state %d",
 			ctx->dev_hdl, ctx->state);
 		rc = -EPROTO;
 	}
@@ -625,6 +586,31 @@ int cam_context_handle_stop_dev(struct cam_context *ctx,
 	return rc;
 }
 
+int cam_context_handle_shutdown_dev(struct cam_context *ctx,
+	struct cam_control *cmd, struct v4l2_subdev_fh *fh)
+{
+	int rc = 0;
+
+	if (!ctx || !ctx->state_machine) {
+		CAM_ERR(CAM_CORE, "Context is not ready");
+		return -EINVAL;
+	}
+
+	if (!cmd) {
+		CAM_ERR(CAM_CORE, "Invalid stop device command payload");
+		return -EINVAL;
+	}
+
+	if (ctx->state_machine[ctx->state].ioctl_ops.shutdown_dev)
+		rc = ctx->state_machine[ctx->state].ioctl_ops.shutdown_dev(
+			(struct v4l2_subdev *)cmd->handle, fh);
+	else
+		CAM_WARN(CAM_CORE, "No shutdown device in dev %d, state %d",
+			ctx->dev_hdl, ctx->state);
+
+	return rc;
+}
+
 int cam_context_handle_info_dump(void *context,
 	enum cam_context_dump_id id)
 {
@@ -687,33 +673,6 @@ int cam_context_handle_dump_dev(struct cam_context *ctx,
 	return rc;
 }
 
-int cam_context_handle_hw_recovery(void *priv, void *data)
-{
-	struct cam_context *ctx = priv;
-	int rc = 0;
-
-	if (!ctx) {
-		CAM_ERR(CAM_CORE, "null context");
-		return -EINVAL;
-	}
-
-	mutex_lock(&ctx->ctx_mutex);
-	if (ctx->state != CAM_CTX_ACTIVATED) {
-		CAM_DBG(CAM_CORE, "skipping recovery for ctx:%d dev:%s in state:%d", ctx->ctx_id,
-			ctx->dev_name, ctx->state);
-		goto end;
-	}
-	CAM_DBG(CAM_CORE, "try hw recovery for ctx:%d dev:%s", ctx->ctx_id, ctx->dev_name);
-	if (ctx->state_machine[ctx->state].recovery_ops)
-		rc = ctx->state_machine[ctx->state].recovery_ops(priv, data);
-	else
-		CAM_WARN(CAM_CORE, "no recovery op in state:%d for ctx:%d dev:%s",
-			ctx->state, ctx->ctx_id, ctx->dev_name);
-end:
-	mutex_unlock(&ctx->ctx_mutex);
-	return rc;
-}
-
 int cam_context_init(struct cam_context *ctx,
 	const char *dev_name,
 	uint64_t dev_id,
@@ -721,7 +680,7 @@ int cam_context_init(struct cam_context *ctx,
 	struct cam_req_mgr_kmd_ops *crm_node_intf,
 	struct cam_hw_mgr_intf *hw_mgr_intf,
 	struct cam_ctx_request *req_list,
-	uint32_t req_size, int img_iommu_hdl)
+	uint32_t req_size)
 {
 	int i;
 
@@ -759,12 +718,10 @@ int cam_context_init(struct cam_context *ctx,
 		INIT_LIST_HEAD(&ctx->req_list[i].list);
 		list_add_tail(&ctx->req_list[i].list, &ctx->free_req_list);
 		ctx->req_list[i].ctx = ctx;
-		ctx->req_list[i].index = i;
 	}
 	ctx->state = CAM_CTX_AVAILABLE;
 	ctx->state_machine = NULL;
 	ctx->ctx_priv = NULL;
-	ctx->img_iommu_hdl = img_iommu_hdl;
 
 	return 0;
 }
@@ -811,32 +768,4 @@ void cam_context_getref(struct cam_context *ctx)
 		"ctx device hdl %ld, ref count %d, dev_name %s",
 		ctx->dev_hdl, refcount_read(&(ctx->refcount.refcount)),
 		ctx->dev_name);
-}
-
-int cam_context_add_evt_inject(struct cam_context *ctx, void *evt_args)
-{
-	int rc = 0;
-
-	if (!ctx->state_machine) {
-		CAM_ERR(CAM_CORE, "Context is not ready");
-		return -EINVAL;
-	}
-
-	mutex_lock(&ctx->ctx_mutex);
-	if ((ctx->state > CAM_CTX_AVAILABLE) &&
-		(ctx->state < CAM_CTX_STATE_MAX)) {
-		if (ctx->state_machine[ctx->state].evt_inject_ops) {
-			rc = ctx->state_machine[ctx->state].evt_inject_ops(
-				ctx, evt_args);
-		} else {
-			CAM_WARN(CAM_CORE, "No evt inject ops in dev %d, state %d",
-				ctx->dev_hdl, ctx->state);
-		}
-	} else {
-		rc = -EINVAL;
-	}
-
-	mutex_unlock(&ctx->ctx_mutex);
-
-	return rc;
 }

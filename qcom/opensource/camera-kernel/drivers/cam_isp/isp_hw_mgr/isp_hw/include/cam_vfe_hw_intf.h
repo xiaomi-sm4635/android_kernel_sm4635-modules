@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_VFE_HW_INTF_H_
@@ -9,11 +9,13 @@
 
 #include "cam_isp_hw.h"
 #include "cam_ife_csid_hw_intf.h"
+#include "cam_ife_csid_hw_intf.h"
 #include "cam_cpas_api.h"
 
-#define CAM_VFE_HW_NUM_MAX            8
+#define CAM_VFE_HW_NUM_MAX            7
 
 #define VFE_CORE_BASE_IDX             0
+#define CAMNOC_CORE_BASE_IDX          1
 #define RT_BASE_IDX                   2
 /*
  * VBIF and BUS do not exist on same HW.
@@ -22,9 +24,7 @@
 #define VFE_VBIF_BASE_IDX             1
 #define VFE_BUS_BASE_IDX              1
 
-#define CAM_VFE_MAX_UBWC_PORTS        12
-
-#define CAM_VFE_PERF_CNT_MAX          8
+#define CAM_VFE_MAX_UBWC_PORTS        4
 
 enum cam_isp_hw_vfe_in_mux {
 	CAM_ISP_HW_VFE_IN_CAMIF       = 0,
@@ -56,10 +56,6 @@ enum cam_vfe_hw_irq_status {
 	CAM_VFE_IRQ_STATUS_P2I_ERROR            = 2,
 	CAM_VFE_IRQ_STATUS_VIOLATION            = 3,
 	CAM_VFE_IRQ_STATUS_MAX,
-};
-
-enum cam_vfe_irq_err_mask {
-	CAM_VFE_IRQ_ERR_MASK_HWPD_VIOLATION     = 0x00000001,
 };
 
 enum cam_vfe_hw_irq_regs {
@@ -148,10 +144,6 @@ struct cam_vfe_hw_vfe_bus_rd_acquire_args {
  * @dual_slave_core:         If Master and Slave exists, HW Index of Slave
  * @cdm_ops:                 CDM operations
  * @disable_ubwc_comp:       Disable UBWC compression
- * @use_wm_pack:             Use WM Packing
- * @comp_grp_id:             VFE bus comp group id
- * @use_hw_ctxt:             Use HW context id info
- *
  */
 struct cam_vfe_hw_vfe_out_acquire_args {
 	struct cam_isp_resource_node         *rsrc_node;
@@ -163,9 +155,6 @@ struct cam_vfe_hw_vfe_out_acquire_args {
 	uint32_t                              dual_slave_core;
 	struct cam_cdm_utils_ops             *cdm_ops;
 	bool                                  disable_ubwc_comp;
-	bool                                  use_wm_pack;
-	uint32_t                              comp_grp_id;
-	bool                                  use_hw_ctxt;
 };
 
 /*
@@ -177,28 +166,23 @@ struct cam_vfe_hw_vfe_out_acquire_args {
  *                           else CAM_ISP_HW_VFE_IN_MAX
  * @dual_hw_idx:             Slave core for this master core if dual vfe case
  * @is_dual:                 flag to indicate if dual vfe case
- * @hw_ctxt_mask:            Mask to indicate destination hw contexts acquired corresponding to
- *                           a particular CSID IPP path
  * @cdm_ops:                 CDM operations
  * @sync_mode:               In case of Dual VFE, this is Master or Slave.
  *                           (Default is Master in case of Single VFE)
  * @in_port:                 Input port details to acquire
  * @is_fe_enabled:           Flag to indicate if FE is enabled
  * @is_offline:              Flag to indicate Offline IFE
- * @handle_camif_irq:        Flag to handle the cmaif irq in VFE
  */
 struct cam_vfe_hw_vfe_in_acquire_args {
 	struct cam_isp_resource_node         *rsrc_node;
 	uint32_t                              res_id;
 	uint32_t                              dual_hw_idx;
 	uint32_t                              is_dual;
-	uint32_t                              hw_ctxt_mask;
 	void                                 *cdm_ops;
 	enum cam_isp_hw_sync_mode             sync_mode;
 	struct cam_isp_in_port_generic_info  *in_port;
 	bool                                  is_fe_enabled;
 	bool                                  is_offline;
-	bool                                  handle_camif_irq;
 };
 
 /*
@@ -233,12 +217,10 @@ struct cam_vfe_acquire_args {
  *
  * @node_res:                Resource to get the time stamp
  * @clk_rate:                Clock rate requested
- * @vote_level:              DRV vote level corresponding to requested rate
  */
 struct cam_vfe_clock_update_args {
 	struct cam_isp_resource_node      *node_res;
 	uint64_t                           clk_rate;
-	uint32_t                           vote_level;
 };
 
 /*
@@ -289,6 +271,22 @@ struct cam_vfe_fe_update_args {
 	struct cam_fe_config               fe_config;
 };
 
+enum cam_vfe_bw_control_action {
+	CAM_VFE_BW_CONTROL_EXCLUDE       = 0,
+	CAM_VFE_BW_CONTROL_INCLUDE       = 1
+};
+
+/*
+ * struct cam_vfe_bw_control_args:
+ *
+ * @node_res:             Resource to get the time stamp
+ * @action:               Bandwidth control action
+ */
+struct cam_vfe_bw_control_args {
+	struct cam_isp_resource_node      *node_res;
+	enum cam_vfe_bw_control_action     action;
+};
+
 /*
  * struct cam_vfe_top_irq_evt_payload:
  *
@@ -324,7 +322,7 @@ struct cam_vfe_top_irq_evt_payload {
  *                           handled
  * @error_type:              Identify different errors
  * @ts:                      Timestamp
- * @last_consumed_addr:      Last consumed addr for resource
+ * @evt_param                Specific info about frame
  */
 struct cam_vfe_bus_irq_evt_payload {
 	struct list_head            list;
@@ -336,7 +334,7 @@ struct cam_vfe_bus_irq_evt_payload {
 	uint32_t                    evt_id;
 	uint32_t                    irq_reg_val[CAM_IFE_BUS_IRQ_REGISTERS_MAX];
 	struct cam_isp_timestamp    ts;
-	uint32_t                    last_consumed_addr;
+	uint32_t                    evt_param;
 };
 
 /**
@@ -389,22 +387,6 @@ struct cam_vfe_generic_ubwc_config {
 	uint32_t   api_version;
 	struct cam_vfe_generic_ubwc_plane_config
 		ubwc_plane_cfg[CAM_PACKET_MAX_PLANES - 1];
-};
-
-
-/*
- * struct cam_vfe_generic_debug_config:
- *
- * @num_counters            : Number of perf counters configured
- * @vfe_perf_counter_val    : VFE perf counter values
- * @disable_ife_mmu_prefetch: Disable IFE mmu prefetch
- * @enable_ife_frame_irqs:    Enable IFE frame timing IRQs
- */
-struct cam_vfe_generic_debug_config {
-	uint32_t  num_counters;
-	uint32_t  vfe_perf_counter_val[CAM_VFE_PERF_CNT_MAX];
-	bool      disable_ife_mmu_prefetch;
-	bool      enable_ife_frame_irqs;
 };
 
 /*

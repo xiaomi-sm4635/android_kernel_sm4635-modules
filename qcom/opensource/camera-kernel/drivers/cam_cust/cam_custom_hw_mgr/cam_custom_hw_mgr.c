@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/slab.h>
@@ -26,19 +26,21 @@
 
 static struct cam_custom_hw_mgr g_custom_hw_mgr;
 
-static int cam_custom_mgr_get_hw_caps(void *hw_mgr_priv, void *hw_caps_args)
+static int cam_custom_mgr_get_hw_caps(void *hw_mgr_priv,
+	void *hw_caps_args)
 {
 	int rc = 0;
 	struct cam_custom_hw_mgr          *hw_mgr = hw_mgr_priv;
 	struct cam_query_cap_cmd          *query = hw_caps_args;
 	struct cam_custom_query_cap_cmd    custom_hw_cap;
+	struct cam_hw_info                *cam_custom_hw;
+	struct cam_hw_soc_info            *soc_info_hw;
 
-	if (sizeof(struct cam_custom_query_cap_cmd) != query->size) {
-		CAM_ERR(CAM_CUSTOM,
-			"Input query cap size:%u does not match expected query cap size: %u",
-			query->size, sizeof(struct cam_custom_query_cap_cmd));
-		return -EFAULT;
-	}
+	cam_custom_hw = (struct cam_hw_info *)
+		g_custom_hw_mgr.custom_hw[0]->hw_priv;
+	if (cam_custom_hw)
+		soc_info_hw = &cam_custom_hw->soc_info;
+
 	CAM_DBG(CAM_CUSTOM, "enter");
 
 	if (query->handle_type != CAM_HANDLE_USER_POINTER)
@@ -430,6 +432,10 @@ static int cam_custom_mgr_start_hw(void *hw_mgr_priv,
 
 start_only:
 
+	/* Start custom HW first */
+	if (rc < 0)
+		goto err;
+
 	/* Start custom csid */
 	list_for_each_entry(hw_mgr_res,
 		&ctx->res_list_custom_csid, list) {
@@ -671,6 +677,7 @@ static int cam_custom_hw_mgr_acquire_cid_res(
 	struct cam_custom_hw_mgr_res         *cid_res_temp;
 	struct cam_csid_hw_reserve_resource_args  csid_acquire;
 	struct cam_isp_resource_node          *isp_rsrc_node;
+	struct cam_isp_out_port_generic_info *out_port = NULL;
 
 	custom_hw_mgr = custom_ctx->hw_mgr;
 	*cid_res = NULL;
@@ -689,6 +696,9 @@ static int cam_custom_hw_mgr_acquire_cid_res(
 	csid_acquire.res_id =  path_res_id;
 	csid_acquire.node_res = NULL;
 	CAM_DBG(CAM_CUSTOM, "path_res_id %d", path_res_id);
+
+	if (in_port->num_out_res)
+		out_port = &(in_port->data[0]);
 
 	for (i = 0; i < CAM_CUSTOM_CSID_HW_MAX; i++) {
 		if (!custom_hw_mgr->csid_devices[i])
@@ -738,6 +748,7 @@ static int cam_custom_hw_mgr_acquire_csid_res(
 	struct cam_isp_in_port_generic_info *in_port_info)
 {
 	int rc = 0, i = 0;
+	struct cam_custom_hw_mgr                *custom_hw_mgr;
 	struct cam_isp_out_port_generic_info    *out_port;
 	struct cam_custom_hw_mgr_res            *custom_csid_res;
 	struct cam_custom_hw_mgr_res            *custom_cid_res;
@@ -746,6 +757,8 @@ static int cam_custom_hw_mgr_acquire_csid_res(
 	enum cam_ife_pix_path_res_id             path_res_id;
 	struct cam_isp_resource_node            *isp_rsrc_node;
 	struct cam_isp_resource_node            *cid_rsrc_node = NULL;
+
+	custom_hw_mgr = custom_ctx->hw_mgr;
 
 	for (i = 0; i < in_port_info->num_out_res; i++) {
 		out_port = &in_port_info->data[i];
@@ -775,6 +788,7 @@ static int cam_custom_hw_mgr_acquire_csid_res(
 		memset(&custom_csid_acquire, 0, sizeof(custom_csid_acquire));
 		custom_csid_acquire.res_id = path_res_id;
 		custom_csid_acquire.res_type = CAM_ISP_RESOURCE_PIX_PATH;
+		custom_csid_acquire.cid = cid_rsrc_node->res_id;
 		custom_csid_acquire.in_port = in_port_info;
 		custom_csid_acquire.out_port = out_port;
 		custom_csid_acquire.sync_mode = 0;
@@ -955,7 +969,7 @@ static int cam_custom_hw_mgr_acquire_get_unified_dev_str(
 	port_info->vc[0]           =  in->vc[0];
 	port_info->dt[0]           =  in->dt[0];
 	port_info->num_valid_vc_dt =  in->num_valid_vc_dt;
-	port_info->format[0]       =  in->format;
+	port_info->format          =  in->format;
 	port_info->test_pattern    =  in->test_pattern;
 	port_info->usage_type      =  in->usage_type;
 	port_info->left_start      =  in->left_start;
@@ -1193,7 +1207,7 @@ static int cam_custom_add_io_buffers(
 					io_cfg[i].mem_handle[plane_id],
 					iommu_hdl,
 					&prepare_hw_data->io_addr[plane_id],
-					&size, NULL, NULL);
+					&size);
 				if (rc) {
 					CAM_ERR(CAM_CUSTOM,
 						"No io addr for plane: %d",
@@ -1258,12 +1272,6 @@ static int cam_custom_mgr_prepare_hw_update(void *hw_mgr_priv,
 		prepare->packet->cmd_buf_offset);
 	rc = cam_packet_util_get_cmd_mem_addr(
 			cmd_desc->mem_handle, &ptr, &len);
-	if (rc == -EINVAL) {
-		CAM_ERR(CAM_CUSTOM, "Failed to get CPU addr handle 0x%x",
-			cmd_desc->mem_handle);
-		return -EINVAL;
-	}
-
 	if (!rc) {
 		ptr += (cmd_desc->offset / 4);
 		custom_buf_type1 =
@@ -1477,6 +1485,7 @@ int cam_custom_hw_mgr_init(struct device_node *of_node,
 {
 	int rc = 0;
 	int i, j;
+	struct cam_custom_hw_mgr_ctx *ctx_pool;
 	uint32_t num_custom_available, num_custom_functional = 0;
 
 	memset(&g_custom_hw_mgr, 0, sizeof(g_custom_hw_mgr));
@@ -1487,14 +1496,12 @@ int cam_custom_hw_mgr_init(struct device_node *of_node,
 		/* Initialize sub modules */
 		rc = cam_custom_hw_sub_mod_init(
 				&g_custom_hw_mgr.custom_hw[i], i);
-		CAM_DBG(CAM_CUSTOM, "sub module initialized. rc:%d", rc);
 	}
 
 	for (i = 0; i < CAM_CUSTOM_CSID_HW_MAX; i++) {
 		/* Initialize csid custom modules */
 		rc = cam_custom_csid_hw_init(
 			&g_custom_hw_mgr.csid_devices[i], i);
-		CAM_DBG(CAM_CUSTOM, "csid custom module initialized. rc:%d", rc);
 	}
 
 	INIT_LIST_HEAD(&g_custom_hw_mgr.free_ctx_list);
@@ -1517,6 +1524,8 @@ int cam_custom_hw_mgr_init(struct device_node *of_node,
 		memset(&g_custom_hw_mgr.ctx_pool[i], 0,
 			sizeof(g_custom_hw_mgr.ctx_pool[i]));
 		INIT_LIST_HEAD(&g_custom_hw_mgr.ctx_pool[i].list);
+
+		ctx_pool = &g_custom_hw_mgr.ctx_pool[i];
 
 		/* init context pool */
 		INIT_LIST_HEAD(&g_custom_hw_mgr.ctx_pool[i].free_res_list);

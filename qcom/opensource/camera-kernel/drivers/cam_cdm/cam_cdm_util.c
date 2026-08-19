@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/types.h>
@@ -18,12 +17,12 @@
 
 #define CAM_CDM_SW_CMD_COUNT    2
 #define CAM_CMD_LENGTH_MASK     0xFFFF
+#define CAM_CDM_COMMAND_OFFSET  24
 #define CAM_CDM_REG_OFFSET_MASK 0x00FFFFFF
 
 #define CAM_CDM_DMI_DATA_HI_OFFSET   8
 #define CAM_CDM_DMI_DATA_OFFSET      8
 #define CAM_CDM_DMI_DATA_LO_OFFSET   12
-#define CAM_CDM_REG_RANDOM_CMD_WORDS 2
 
 static unsigned int CDMCmdHeaderSizes[
 	CAM_CDM_CMD_PRIVATE_BASE + CAM_CDM_SW_CMD_COUNT] = {
@@ -187,78 +186,73 @@ struct cdm_prefetch_disable_event_cmd {
 	unsigned int mask2;
 } __attribute__((__packed__));
 
-uint32_t cam_cdm_get_cmd_header_size(unsigned int command)
+uint32_t cdm_get_cmd_header_size(unsigned int command)
 {
 	return CDMCmdHeaderSizes[command];
 }
 
-uint32_t cam_cdm_required_size_dmi(void)
+uint32_t cdm_required_size_dmi(void)
 {
-	return cam_cdm_get_cmd_header_size(CAM_CDM_CMD_DMI);
+	return cdm_get_cmd_header_size(CAM_CDM_CMD_DMI);
 }
 
-uint32_t cam_cdm_required_size_reg_continuous(uint32_t numVals)
+uint32_t cdm_required_size_reg_continuous(uint32_t  numVals)
 {
-	if (!numVals) {
-		CAM_WARN(CAM_CDM, "numVals cant be 0");
-		return 0;
-	}
-
-	return cam_cdm_get_cmd_header_size(CAM_CDM_CMD_REG_CONT) + numVals;
+	return cdm_get_cmd_header_size(CAM_CDM_CMD_REG_CONT) + numVals;
 }
 
-uint32_t cam_cdm_required_size_reg_random(uint32_t numRegVals)
+uint32_t cdm_required_size_reg_random(uint32_t numRegVals)
 {
-	return cam_cdm_get_cmd_header_size(CAM_CDM_CMD_REG_RANDOM) +
+	return cdm_get_cmd_header_size(CAM_CDM_CMD_REG_RANDOM) +
 		(2 * numRegVals);
 }
 
-uint32_t cam_cdm_required_size_indirect(void)
+uint32_t cdm_required_size_indirect(void)
 {
-	return cam_cdm_get_cmd_header_size(CAM_CDM_CMD_BUFF_INDIRECT);
+	return cdm_get_cmd_header_size(CAM_CDM_CMD_BUFF_INDIRECT);
 }
 
-uint32_t cam_cdm_required_size_genirq(void)
+uint32_t cdm_required_size_genirq(void)
 {
-	return cam_cdm_get_cmd_header_size(CAM_CDM_CMD_GEN_IRQ);
+	return cdm_get_cmd_header_size(CAM_CDM_CMD_GEN_IRQ);
 }
 
-uint32_t cam_cdm_required_size_wait_event(void)
+uint32_t cdm_required_size_wait_event(void)
 {
-	return cam_cdm_get_cmd_header_size(CAM_CDM_CMD_WAIT_EVENT);
+	return cdm_get_cmd_header_size(CAM_CDM_CMD_WAIT_EVENT);
 }
 
-uint32_t cam_cdm_required_size_changebase(void)
+uint32_t cdm_required_size_changebase(void)
 {
-	return cam_cdm_get_cmd_header_size(CAM_CDM_CMD_CHANGE_BASE);
+	return cdm_get_cmd_header_size(CAM_CDM_CMD_CHANGE_BASE);
 }
 
-uint32_t cam_cdm_required_size_comp_wait(void)
+uint32_t cdm_required_size_comp_wait(void)
 {
-	return cam_cdm_get_cmd_header_size(CAM_CDM_CMD_COMP_WAIT);
+	return cdm_get_cmd_header_size(CAM_CDM_CMD_COMP_WAIT);
 }
 
-uint32_t cam_cdm_required_size_clear_comp_event(void)
+uint32_t cdm_required_size_clear_comp_event(void)
 {
-	return cam_cdm_get_cmd_header_size(CAM_CDM_CLEAR_COMP_WAIT);
+	return cdm_get_cmd_header_size(CAM_CDM_CLEAR_COMP_WAIT);
 }
 
-uint32_t cam_cdm_required_size_prefetch_disable(void)
+uint32_t cdm_required_size_prefetch_disable(void)
 {
-	return cam_cdm_get_cmd_header_size(CAM_CDM_WAIT_PREFETCH_DISABLE);
+	return cdm_get_cmd_header_size(CAM_CDM_WAIT_PREFETCH_DISABLE);
 }
 
-uint32_t cam_cdm_offsetof_dmi_addr(void)
+uint32_t cdm_offsetof_dmi_addr(void)
 {
 	return offsetof(struct cdm_dmi_cmd, addr);
 }
 
-uint32_t cam_cdm_offsetof_indirect_addr(void)
+uint32_t cdm_offsetof_indirect_addr(void)
 {
 	return offsetof(struct cdm_indirect_cmd, addr);
 }
 
-uint32_t *cam_cdm_write_dmi(uint32_t *pCmdBuffer, uint8_t dmiCmd,
+uint32_t *cdm_write_dmi(uint32_t *pCmdBuffer, uint8_t dmiCmd,
 	uint32_t DMIAddr, uint8_t DMISel, uint32_t dmiBufferAddr,
 	uint32_t length)
 {
@@ -270,12 +264,12 @@ uint32_t *cam_cdm_write_dmi(uint32_t *pCmdBuffer, uint8_t dmiCmd,
 	pHeader->DMIAddr = DMIAddr;
 	pHeader->DMISel = DMISel;
 
-	pCmdBuffer += cam_cdm_get_cmd_header_size(CAM_CDM_CMD_DMI);
+	pCmdBuffer += cdm_get_cmd_header_size(CAM_CDM_CMD_DMI);
 
 	return pCmdBuffer;
 }
 
-uint32_t *cam_cdm_write_regcontinuous(uint32_t *pCmdBuffer, uint32_t reg,
+uint32_t *cdm_write_regcontinuous(uint32_t *pCmdBuffer, uint32_t reg,
 	uint32_t numVals, uint32_t *pVals)
 {
 	uint32_t i;
@@ -288,7 +282,7 @@ uint32_t *cam_cdm_write_regcontinuous(uint32_t *pCmdBuffer, uint32_t reg,
 	pHeader->reserved1 = 0;
 	pHeader->offset = reg;
 
-	pCmdBuffer += cam_cdm_get_cmd_header_size(CAM_CDM_CMD_REG_CONT);
+	pCmdBuffer += cdm_get_cmd_header_size(CAM_CDM_CMD_REG_CONT);
 
 	for (i = 0; i < numVals; i++)
 		(((uint32_t *)pCmdBuffer)[i]) = (((uint32_t *)pVals)[i]);
@@ -298,7 +292,7 @@ uint32_t *cam_cdm_write_regcontinuous(uint32_t *pCmdBuffer, uint32_t reg,
 	return pCmdBuffer;
 }
 
-uint32_t *cam_cdm_write_regrandom(uint32_t *pCmdBuffer, uint32_t numRegVals,
+uint32_t *cdm_write_regrandom(uint32_t *pCmdBuffer, uint32_t numRegVals,
 	uint32_t *pRegVals)
 {
 	uint32_t i;
@@ -306,16 +300,11 @@ uint32_t *cam_cdm_write_regrandom(uint32_t *pCmdBuffer, uint32_t numRegVals,
 	struct cdm_regrandom_cmd *pHeader =
 		(struct cdm_regrandom_cmd *)pCmdBuffer;
 
-	if (!numRegVals) {
-		CAM_ERR(CAM_CDM, "Number of reg-val pairs can not be 0");
-		return pCmdBuffer;
-	}
-
 	pHeader->count = numRegVals;
 	pHeader->cmd = CAM_CDM_CMD_REG_RANDOM;
 	pHeader->reserved = 0;
 
-	pCmdBuffer += cam_cdm_get_cmd_header_size(CAM_CDM_CMD_REG_RANDOM);
+	pCmdBuffer += cdm_get_cmd_header_size(CAM_CDM_CMD_REG_RANDOM);
 	dst = pCmdBuffer;
 	src = pRegVals;
 	for (i = 0; i < numRegVals; i++) {
@@ -326,7 +315,7 @@ uint32_t *cam_cdm_write_regrandom(uint32_t *pCmdBuffer, uint32_t numRegVals,
 	return dst;
 }
 
-uint32_t *cam_cdm_write_indirect(uint32_t *pCmdBuffer, uint32_t indirectBufAddr,
+uint32_t *cdm_write_indirect(uint32_t *pCmdBuffer, uint32_t indirectBufAddr,
 	uint32_t length)
 {
 	struct cdm_indirect_cmd *pHeader =
@@ -336,12 +325,12 @@ uint32_t *cam_cdm_write_indirect(uint32_t *pCmdBuffer, uint32_t indirectBufAddr,
 	pHeader->addr = indirectBufAddr;
 	pHeader->length = length - 1;
 
-	pCmdBuffer += cam_cdm_get_cmd_header_size(CAM_CDM_CMD_BUFF_INDIRECT);
+	pCmdBuffer += cdm_get_cmd_header_size(CAM_CDM_CMD_BUFF_INDIRECT);
 
 	return pCmdBuffer;
 }
 
-void cam_cdm_write_genirq(uint32_t *pCmdBuffer, uint32_t userdata,
+void cdm_write_genirq(uint32_t *pCmdBuffer, uint32_t userdata,
 		bool bit_wr_enable, uint32_t fifo_idx)
 {
 	struct cdm_genirq_cmd *pHeader = (struct cdm_genirq_cmd *)pCmdBuffer;
@@ -357,7 +346,7 @@ void cam_cdm_write_genirq(uint32_t *pCmdBuffer, uint32_t userdata,
 	pHeader->userdata = (userdata << (8 * fifo_idx));
 }
 
-uint32_t *cam_cdm_write_wait_event(uint32_t *pcmdbuffer, uint32_t iw,
+uint32_t *cdm_write_wait_event(uint32_t *pcmdbuffer, uint32_t iw,
 	uint32_t id, uint32_t mask,
 	uint32_t offset, uint32_t data)
 {
@@ -373,12 +362,12 @@ uint32_t *cam_cdm_write_wait_event(uint32_t *pcmdbuffer, uint32_t iw,
 	pheader->iw_reserved = 0;
 	pheader->offset_reserved = 0;
 
-	pcmdbuffer += cam_cdm_get_cmd_header_size(CAM_CDM_CMD_WAIT_EVENT);
+	pcmdbuffer += cdm_get_cmd_header_size(CAM_CDM_CMD_WAIT_EVENT);
 
 	return pcmdbuffer;
 }
 
-uint32_t *cam_cdm_write_changebase(uint32_t *pCmdBuffer, uint32_t base)
+uint32_t *cdm_write_changebase(uint32_t *pCmdBuffer, uint32_t base)
 {
 	struct cdm_changebase_cmd *pHeader =
 		(struct cdm_changebase_cmd *)pCmdBuffer;
@@ -387,12 +376,12 @@ uint32_t *cam_cdm_write_changebase(uint32_t *pCmdBuffer, uint32_t base)
 
 	pHeader->cmd = CAM_CDM_CMD_CHANGE_BASE;
 	pHeader->base = base;
-	pCmdBuffer += cam_cdm_get_cmd_header_size(CAM_CDM_CMD_CHANGE_BASE);
+	pCmdBuffer += cdm_get_cmd_header_size(CAM_CDM_CMD_CHANGE_BASE);
 
 	return pCmdBuffer;
 }
 
-uint32_t *cam_cdm_write_wait_comp_event(
+uint32_t *cdm_write_wait_comp_event(
 	uint32_t *pCmdBuffer, uint32_t mask1, uint32_t mask2)
 {
 	struct cdm_wait_comp_event_cmd *pHeader =
@@ -402,12 +391,12 @@ uint32_t *cam_cdm_write_wait_comp_event(
 	pHeader->mask1 = mask1;
 	pHeader->mask2 = mask2;
 
-	pCmdBuffer += cam_cdm_get_cmd_header_size(CAM_CDM_CMD_COMP_WAIT);
+	pCmdBuffer += cdm_get_cmd_header_size(CAM_CDM_CMD_COMP_WAIT);
 
 	return pCmdBuffer;
 }
 
-uint32_t *cam_cdm_write_clear_comp_event(
+uint32_t *cdm_write_clear_comp_event(
 	uint32_t *pCmdBuffer, uint32_t mask1, uint32_t mask2)
 {
 	struct cdm_clear_comp_event_cmd *pHeader =
@@ -417,12 +406,12 @@ uint32_t *cam_cdm_write_clear_comp_event(
 	pHeader->mask1 = mask1;
 	pHeader->mask2 = mask2;
 
-	pCmdBuffer += cam_cdm_get_cmd_header_size(CAM_CDM_CLEAR_COMP_WAIT);
+	pCmdBuffer += cdm_get_cmd_header_size(CAM_CDM_CLEAR_COMP_WAIT);
 
 	return pCmdBuffer;
 }
 
-uint32_t *cam_cdm_write_wait_prefetch_disable(
+uint32_t *cdm_write_wait_prefetch_disable(
 	uint32_t                   *pCmdBuffer,
 	uint32_t                    id,
 	uint32_t                    mask1,
@@ -436,36 +425,36 @@ uint32_t *cam_cdm_write_wait_prefetch_disable(
 	pHeader->mask1 = mask1;
 	pHeader->mask2 = mask2;
 
-	pCmdBuffer += cam_cdm_get_cmd_header_size(CAM_CDM_WAIT_PREFETCH_DISABLE);
+	pCmdBuffer += cdm_get_cmd_header_size(CAM_CDM_WAIT_PREFETCH_DISABLE);
 
 	return pCmdBuffer;
 }
 
 
 struct cam_cdm_utils_ops CDM170_ops = {
-	.cdm_get_cmd_header_size              = cam_cdm_get_cmd_header_size,
-	.cdm_required_size_dmi                = cam_cdm_required_size_dmi,
-	.cdm_required_size_reg_continuous     = cam_cdm_required_size_reg_continuous,
-	.cdm_required_size_reg_random         = cam_cdm_required_size_reg_random,
-	.cdm_required_size_indirect           = cam_cdm_required_size_indirect,
-	.cdm_required_size_genirq             = cam_cdm_required_size_genirq,
-	.cdm_required_size_wait_event         = cam_cdm_required_size_wait_event,
-	.cdm_required_size_changebase         = cam_cdm_required_size_changebase,
-	.cdm_required_size_comp_wait          = cam_cdm_required_size_comp_wait,
-	.cdm_required_size_clear_comp_event   = cam_cdm_required_size_clear_comp_event,
-	.cdm_required_size_prefetch_disable   = cam_cdm_required_size_prefetch_disable,
-	.cdm_offsetof_dmi_addr                = cam_cdm_offsetof_dmi_addr,
-	.cdm_offsetof_indirect_addr           = cam_cdm_offsetof_indirect_addr,
-	.cdm_write_dmi                        = cam_cdm_write_dmi,
-	.cdm_write_regcontinuous              = cam_cdm_write_regcontinuous,
-	.cdm_write_regrandom                  = cam_cdm_write_regrandom,
-	.cdm_write_indirect                   = cam_cdm_write_indirect,
-	.cdm_write_genirq                     = cam_cdm_write_genirq,
-	.cdm_write_wait_event                 = cam_cdm_write_wait_event,
-	.cdm_write_changebase                 = cam_cdm_write_changebase,
-	.cdm_write_wait_comp_event            = cam_cdm_write_wait_comp_event,
-	.cdm_write_clear_comp_event           = cam_cdm_write_clear_comp_event,
-	.cdm_write_wait_prefetch_disable      = cam_cdm_write_wait_prefetch_disable,
+	cdm_get_cmd_header_size,
+	cdm_required_size_dmi,
+	cdm_required_size_reg_continuous,
+	cdm_required_size_reg_random,
+	cdm_required_size_indirect,
+	cdm_required_size_genirq,
+	cdm_required_size_wait_event,
+	cdm_required_size_changebase,
+	cdm_required_size_comp_wait,
+	cdm_required_size_clear_comp_event,
+	cdm_required_size_prefetch_disable,
+	cdm_offsetof_dmi_addr,
+	cdm_offsetof_indirect_addr,
+	cdm_write_dmi,
+	cdm_write_regcontinuous,
+	cdm_write_regrandom,
+	cdm_write_indirect,
+	cdm_write_genirq,
+	cdm_write_wait_event,
+	cdm_write_changebase,
+	cdm_write_wait_comp_event,
+	cdm_write_clear_comp_event,
+	cdm_write_wait_prefetch_disable,
 };
 
 int cam_cdm_get_ioremap_from_base(uint32_t hw_base,
@@ -490,267 +479,117 @@ int cam_cdm_get_ioremap_from_base(uint32_t hw_base,
 	return ret;
 }
 
-static int cam_cdm_util_cmd_buf_validation(void __iomem *base_addr,
-	uint32_t base_array_size,
-	struct cam_soc_reg_map *base_table[CAM_SOC_MAX_BLOCK],
-	uint32_t cmd_buf_size, void *buf,
-	resource_size_t *size,
-	enum cam_cdm_command cmd_type)
+static int cam_cdm_util_reg_cont_write(void __iomem *base_addr,
+	uint32_t *cmd_buf, uint32_t cmd_buf_size, uint32_t *used_bytes)
 {
+	int ret = 0;
+	uint32_t *data;
+	struct cdm_regcontinuous_cmd *reg_cont;
 
-	int i, ret = 0;
+	if ((cmd_buf_size < cdm_get_cmd_header_size(CAM_CDM_CMD_REG_CONT)) ||
+		(!base_addr)) {
+		CAM_ERR(CAM_CDM, "invalid base addr and data length  %d %pK",
+			cmd_buf_size, base_addr);
+		return -EINVAL;
+	}
+
+	reg_cont = (struct cdm_regcontinuous_cmd *)cmd_buf;
+	if ((!reg_cont->count) || (reg_cont->count > 0x10000) ||
+		(((reg_cont->count * sizeof(uint32_t)) +
+			cdm_get_cmd_header_size(CAM_CDM_CMD_REG_CONT)) >
+			cmd_buf_size)) {
+		CAM_ERR(CAM_CDM, "buffer size %d is not sufficient for count%d",
+			cmd_buf_size, reg_cont->count);
+		return -EINVAL;
+	}
+	data = cmd_buf + cdm_get_cmd_header_size(CAM_CDM_CMD_REG_CONT);
+	cam_io_memcpy(base_addr + reg_cont->offset,	data,
+		reg_cont->count * sizeof(uint32_t));
+
+	*used_bytes = (reg_cont->count * sizeof(uint32_t)) +
+		(4 * cdm_get_cmd_header_size(CAM_CDM_CMD_REG_CONT));
+
+	return ret;
+}
+
+static int cam_cdm_util_reg_random_write(void __iomem *base_addr,
+	uint32_t *cmd_buf, uint32_t cmd_buf_size, uint32_t *used_bytes)
+{
+	uint32_t i;
+	struct cdm_regrandom_cmd *reg_random;
+	uint32_t *data;
 
 	if (!base_addr) {
 		CAM_ERR(CAM_CDM, "invalid base address");
 		return -EINVAL;
 	}
 
-	for (i = 0; i < base_array_size; i++) {
-		if ((base_table[i]) &&
-			((base_table[i])->mem_base == base_addr)) {
-			*size = (base_table[i])->size;
-			break;
-		}
-	}
-
-	if (*size == 0) {
-		CAM_ERR(CAM_CDM, "Could not retrieve ioremap size, address not mapped!");
+	reg_random = (struct cdm_regrandom_cmd *) cmd_buf;
+	if ((!reg_random->count) || (reg_random->count > 0x10000) ||
+		(((reg_random->count * (sizeof(uint32_t) * 2)) +
+		cdm_get_cmd_header_size(CAM_CDM_CMD_REG_RANDOM)) >
+			cmd_buf_size)) {
+		CAM_ERR(CAM_CDM, "invalid reg_count  %d cmd_buf_size %d",
+			reg_random->count, cmd_buf_size);
 		return -EINVAL;
 	}
-
-	switch (cmd_type) {
-	case CAM_CDM_CMD_REG_RANDOM: {
-		struct cdm_regrandom_cmd *reg_random = (struct cdm_regrandom_cmd *)buf;
-		uint32_t *data, offset;
-
-		if ((!reg_random->count) ||
-			(((reg_random->count * (sizeof(uint32_t) * CAM_CDM_REG_RANDOM_CMD_WORDS)) +
-			cam_cdm_get_cmd_header_size(CAM_CDM_CMD_REG_RANDOM)) > cmd_buf_size)) {
-			CAM_ERR(CAM_CDM, "invalid reg_count  %d cmd_buf_size %d",
-				reg_random->count, cmd_buf_size);
-			return -EINVAL;
-		}
-
-		data = (uint32_t *)buf + cam_cdm_get_cmd_header_size(CAM_CDM_CMD_REG_RANDOM);
-
-		for (i = 0; i < reg_random->count; i++) {
-			offset = data[0];
-			if (offset > (*size - sizeof(uint32_t))) {
-				CAM_ERR(CAM_CDM, "Offset out of mapped range, size:%llu offset:%u",
-					*size, offset);
-				return -EINVAL;
-			}
-
-			data += CAM_CDM_REG_RANDOM_CMD_WORDS;
-		}
-
-		}
-		break;
-	case CAM_CDM_CMD_REG_CONT: {
-		struct cdm_regcontinuous_cmd *reg_cont = (struct cdm_regcontinuous_cmd *) buf;
-
-		if ((!reg_cont->count) || (((reg_cont->count * sizeof(uint32_t)) +
-			cam_cdm_get_cmd_header_size(CAM_CDM_CMD_REG_CONT)) > cmd_buf_size)) {
-			CAM_ERR(CAM_CDM, "buffer size %d is not sufficient for count%d",
-				cmd_buf_size, reg_cont->count);
-			return -EINVAL;
-		}
-
-		if ((reg_cont->offset > (*size - sizeof(uint32_t))) || ((reg_cont->offset +
-			(reg_cont->count * sizeof(uint32_t))) > *size)) {
-			CAM_ERR(CAM_CDM, "Offset out of mapped range! size: %lu, offset: %u",
-				*size, reg_cont->offset);
-			return -EINVAL;
-		}
-
-		}
-		break;
-	case CAM_CDM_CMD_SWD_DMI_64: {
-		struct cdm_dmi_cmd *swd_dmi = (struct cdm_dmi_cmd *) buf;
-		uint32_t count = 0, low_off = 0, high_off = 0;
-
-		if (cmd_buf_size < (cam_cdm_required_size_dmi() + swd_dmi->length + 1)) {
-			CAM_ERR(CAM_CDM, "invalid CDM_SWD_DMI length %d", swd_dmi->length + 1);
-			return -EINVAL;
-		}
-
-		count = (swd_dmi->length + 1)/8;
-		low_off = swd_dmi->DMIAddr + CAM_CDM_DMI_DATA_LO_OFFSET;
-		high_off = swd_dmi->DMIAddr + CAM_CDM_DMI_DATA_HI_OFFSET;
-
-		if ((low_off + (count * sizeof(uint64_t)) - sizeof(uint32_t) > *size) ||
-			(high_off + (count * sizeof(uint64_t)) > *size)) {
-			CAM_ERR(CAM_CDM,
-				"Offset out of mapped range! size:%llu lo_offset:%u hi_offset:%u",
-				*size, low_off, high_off);
-			return -EINVAL;
-		}
-
-		}
-		break;
-	case CAM_CDM_CMD_SWD_DMI_32: {
-		struct cdm_dmi_cmd *swd_dmi = (struct cdm_dmi_cmd *) buf;
-		uint32_t count = 0, low_off = 0;
-
-		if (cmd_buf_size < (cam_cdm_required_size_dmi() + swd_dmi->length + 1)) {
-			CAM_ERR(CAM_CDM, "invalid CDM_SWD_DMI length %d", swd_dmi->length + 1);
-			return -EINVAL;
-		}
-
-		count = (swd_dmi->length + 1)/4;
-		low_off = swd_dmi->DMIAddr + CAM_CDM_DMI_DATA_LO_OFFSET;
-
-		if (low_off + (count * sizeof(uint32_t)) > *size) {
-			CAM_ERR(CAM_CDM, "Offset out of mapped range! size:%llu lo_offset:%u",
-				*size, low_off);
-			return -EINVAL;
-		}
-
-		}
-		break;
-	case CAM_CDM_CMD_DMI: {
-		struct cdm_dmi_cmd *swd_dmi = (struct cdm_dmi_cmd *) buf;
-		uint32_t count = 0, data_off = 0;
-
-		if (cmd_buf_size < (cam_cdm_required_size_dmi() + swd_dmi->length + 1)) {
-			CAM_ERR(CAM_CDM, "invalid CDM_SWD_DMI length %d", swd_dmi->length + 1);
-			return -EINVAL;
-		}
-
-		count = (swd_dmi->length + 1)/4;
-		data_off = swd_dmi->DMIAddr + CAM_CDM_DMI_DATA_OFFSET;
-
-		if (data_off + (count * sizeof(uint32_t)) > *size) {
-			CAM_ERR(CAM_CDM, "Offset out of mapped range! size:%llu offset:%u",
-				*size, data_off);
-			return -EINVAL;
-		}
-
-		}
-		break;
-	default:
-		CAM_ERR(CAM_CDM, "unsupported cdm_cmd_type type 0%x", cmd_type);
-		ret = -EINVAL;
-		break;
-	}
-
-	return ret;
-}
-
-static int cam_cdm_util_reg_cont_write(void __iomem *base_addr,
-	uint32_t *cmd_buf, uint32_t cmd_buf_size, uint32_t *used_bytes,
-	uint32_t base_array_size, struct cam_soc_reg_map *base_table[CAM_SOC_MAX_BLOCK])
-{
-	int rc = 0;
-	uint32_t *data;
-	struct cdm_regcontinuous_cmd reg_cont;
-	resource_size_t size = 0;
-
-	memcpy(&reg_cont, cmd_buf, sizeof(struct cdm_regcontinuous_cmd));
-	rc = cam_cdm_util_cmd_buf_validation(base_addr, base_array_size, base_table,
-		cmd_buf_size, (void *)&reg_cont, &size, CAM_CDM_CMD_REG_CONT);
-	if (rc) {
-		CAM_ERR(CAM_CDM, "Validation failed! rc=%d", rc);
-		return rc;
-	}
-
-	data = cmd_buf + cam_cdm_get_cmd_header_size(CAM_CDM_CMD_REG_CONT);
-
-	cam_io_memcpy(base_addr + reg_cont.offset, data,
-		reg_cont.count * sizeof(uint32_t));
-	*used_bytes = (reg_cont.count * sizeof(uint32_t)) +
-		(4 * cam_cdm_get_cmd_header_size(CAM_CDM_CMD_REG_CONT));
-
-	return rc;
-}
-
-static int cam_cdm_util_reg_random_write(void __iomem *base_addr,
-	uint32_t *cmd_buf, uint32_t cmd_buf_size, uint32_t *used_bytes,
-	uint32_t base_array_size, struct cam_soc_reg_map *base_table[CAM_SOC_MAX_BLOCK])
-{
-	int i, rc = 0;
-	struct cdm_regrandom_cmd *reg_random;
-	void *kbuf = NULL;
-	uint32_t *data;
-	resource_size_t size = 0;
-
-	kbuf = kvzalloc(cmd_buf_size, GFP_KERNEL);
-	if (!kbuf) {
-		CAM_ERR(CAM_CDM, "Mem alloc failed! rc=%d", -ENOMEM);
-		return -ENOMEM;
-	}
-
-	memcpy(kbuf, cmd_buf, cmd_buf_size);
-	rc = cam_cdm_util_cmd_buf_validation(base_addr, base_array_size, base_table,
-		cmd_buf_size, kbuf, &size, CAM_CDM_CMD_REG_RANDOM);
-	if (rc) {
-		CAM_ERR(CAM_CDM, "Validation failed! rc=%d", rc);
-		goto end;
-	}
-
-	data = (uint32_t *)kbuf + cam_cdm_get_cmd_header_size(CAM_CDM_CMD_REG_RANDOM);
-	reg_random = (struct cdm_regrandom_cmd *)kbuf;
+	data = cmd_buf + cdm_get_cmd_header_size(CAM_CDM_CMD_REG_RANDOM);
 
 	for (i = 0; i < reg_random->count; i++) {
 		CAM_DBG(CAM_CDM, "reg random: offset %pK, value 0x%x",
 			((void __iomem *)(base_addr + data[0])),
 			data[1]);
 		cam_io_w(data[1], base_addr + data[0]);
-		data += CAM_CDM_REG_RANDOM_CMD_WORDS;
+		data += 2;
 	}
 
 	*used_bytes = ((reg_random->count * (sizeof(uint32_t) * 2)) +
-		(4 * cam_cdm_get_cmd_header_size(CAM_CDM_CMD_REG_RANDOM)));
-end:
-	kvfree(kbuf);
-	return rc;
+		(4 * cdm_get_cmd_header_size(CAM_CDM_CMD_REG_RANDOM)));
+
+	return 0;
 }
 
 static int cam_cdm_util_swd_dmi_write(uint32_t cdm_cmd_type,
 	void __iomem *base_addr, uint32_t *cmd_buf, uint32_t cmd_buf_size,
-	uint32_t *used_bytes, uint32_t base_array_size,
-	struct cam_soc_reg_map *base_table[CAM_SOC_MAX_BLOCK])
+	uint32_t *used_bytes)
 {
-	int i, rc = 0;
-	struct cdm_dmi_cmd swd_dmi;
+	uint32_t i;
+	struct cdm_dmi_cmd *swd_dmi;
 	uint32_t *data;
-	resource_size_t size = 0;
 
-	memcpy(&swd_dmi, cmd_buf, sizeof(struct cdm_dmi_cmd));
-	rc = cam_cdm_util_cmd_buf_validation(base_addr, base_array_size, base_table,
-		cmd_buf_size, (void *)&swd_dmi, &size, cdm_cmd_type);
-	if (rc) {
-		CAM_ERR(CAM_CDM, "Validation failed! rc=%d", rc);
-		return rc;
+	swd_dmi = (struct cdm_dmi_cmd *)cmd_buf;
+
+	if (cmd_buf_size < (cdm_required_size_dmi() + swd_dmi->length + 1)) {
+		CAM_ERR(CAM_CDM, "invalid CDM_SWD_DMI length %d",
+			swd_dmi->length + 1);
+		return -EINVAL;
 	}
-
-	data = cmd_buf + cam_cdm_required_size_dmi();
+	data = cmd_buf + cdm_required_size_dmi();
 
 	if (cdm_cmd_type == CAM_CDM_CMD_SWD_DMI_64) {
-		for (i = 0; i < (swd_dmi.length + 1)/8; i++) {
+		for (i = 0; i < (swd_dmi->length + 1)/8; i++) {
 			cam_io_w_mb(data[0], base_addr +
-				swd_dmi.DMIAddr + CAM_CDM_DMI_DATA_LO_OFFSET);
+				swd_dmi->DMIAddr + CAM_CDM_DMI_DATA_LO_OFFSET);
 			cam_io_w_mb(data[1], base_addr +
-				swd_dmi.DMIAddr + CAM_CDM_DMI_DATA_HI_OFFSET);
+				swd_dmi->DMIAddr + CAM_CDM_DMI_DATA_HI_OFFSET);
 			data += 2;
 		}
 	} else if (cdm_cmd_type == CAM_CDM_CMD_DMI) {
-		for (i = 0; i < (swd_dmi.length + 1)/4; i++) {
+		for (i = 0; i < (swd_dmi->length + 1)/4; i++) {
 			cam_io_w_mb(data[0], base_addr +
-				swd_dmi.DMIAddr + CAM_CDM_DMI_DATA_OFFSET);
+				swd_dmi->DMIAddr + CAM_CDM_DMI_DATA_OFFSET);
 			data += 1;
 		}
 	} else {
-		for (i = 0; i < (swd_dmi.length + 1)/4; i++) {
+		for (i = 0; i < (swd_dmi->length + 1)/4; i++) {
 			cam_io_w_mb(data[0], base_addr +
-				swd_dmi.DMIAddr + CAM_CDM_DMI_DATA_LO_OFFSET);
+				swd_dmi->DMIAddr + CAM_CDM_DMI_DATA_LO_OFFSET);
 			data += 1;
 		}
 	}
+	*used_bytes = (4 * cdm_required_size_dmi()) + swd_dmi->length + 1;
 
-	*used_bytes = (4 * cam_cdm_required_size_dmi()) + swd_dmi.length + 1;
-
-	return rc;
+	return 0;
 }
 
 int cam_cdm_util_cmd_buf_write(void __iomem **current_device_base,
@@ -759,8 +598,10 @@ int cam_cdm_util_cmd_buf_write(void __iomem **current_device_base,
 	uint32_t base_array_size, uint8_t bl_tag)
 {
 	int ret = 0;
-	uint32_t cdm_cmd_type = 0;
+	uint32_t cdm_cmd_type = 0, total_cmd_buf_size = 0;
 	uint32_t used_bytes = 0;
+
+	total_cmd_buf_size = cmd_buf_size;
 
 	while (cmd_buf_size > 0) {
 		CAM_DBG(CAM_CDM, "cmd data=%x", *cmd_buf);
@@ -768,8 +609,7 @@ int cam_cdm_util_cmd_buf_write(void __iomem **current_device_base,
 		switch (cdm_cmd_type) {
 		case CAM_CDM_CMD_REG_CONT: {
 			ret = cam_cdm_util_reg_cont_write(*current_device_base,
-				cmd_buf, cmd_buf_size, &used_bytes,
-				base_array_size, base_table);
+				cmd_buf, cmd_buf_size, &used_bytes);
 			if (ret)
 				break;
 
@@ -782,7 +622,7 @@ int cam_cdm_util_cmd_buf_write(void __iomem **current_device_base,
 		case CAM_CDM_CMD_REG_RANDOM: {
 			ret = cam_cdm_util_reg_random_write(
 				*current_device_base, cmd_buf, cmd_buf_size,
-				&used_bytes, base_array_size, base_table);
+				&used_bytes);
 			if (ret)
 				break;
 
@@ -804,7 +644,7 @@ int cam_cdm_util_cmd_buf_write(void __iomem **current_device_base,
 			}
 			ret = cam_cdm_util_swd_dmi_write(cdm_cmd_type,
 				*current_device_base, cmd_buf, cmd_buf_size,
-				&used_bytes, base_array_size, base_table);
+				&used_bytes);
 			if (ret)
 				break;
 
@@ -831,8 +671,8 @@ int cam_cdm_util_cmd_buf_write(void __iomem **current_device_base,
 				change_base_cmd->base,
 				current_device_base);
 			cmd_buf_size -= (4 *
-				cam_cdm_required_size_changebase());
-			cmd_buf += cam_cdm_required_size_changebase();
+				cdm_required_size_changebase());
+			cmd_buf += cdm_required_size_changebase();
 			}
 			break;
 		default:
@@ -986,20 +826,17 @@ static long cam_cdm_util_dump_change_base_cmd(uint32_t *cmd_buf_addr,
 	struct cdm_changebase_cmd *p_cbase_cmd;
 	uint32_t *temp_ptr = cmd_buf_addr;
 
-	if (temp_ptr > cmd_buf_addr_end) {
-		CAM_ERR(CAM_CDM,
-			"Invalid cmd start addr:%pK end addr:%pK",
-			temp_ptr, cmd_buf_addr_end);
-
-		return 0;
-	}
-
 	p_cbase_cmd = (struct cdm_changebase_cmd *)temp_ptr;
 	temp_ptr += CDMCmdHeaderSizes[CAM_CDM_CMD_CHANGE_BASE];
 	ret += CDMCmdHeaderSizes[CAM_CDM_CMD_CHANGE_BASE];
 
-	CAM_INFO(CAM_CDM, "CHANGE_BASE: 0x%X, curr cmd addr: %pK",
-		p_cbase_cmd->base, temp_ptr);
+	if (temp_ptr > cmd_buf_addr_end)
+		CAM_ERR(CAM_CDM,
+			"Invalid cmd start addr:%pK end addr:%pK",
+			temp_ptr, cmd_buf_addr_end);
+
+	CAM_INFO(CAM_CDM, "CHANGE_BASE: 0x%X",
+		p_cbase_cmd->base);
 
 	return ret;
 }
@@ -1024,88 +861,6 @@ static long cam_cdm_util_dump_perf_ctrl_cmd(uint32_t *cmd_buf_addr)
 	CAM_INFO(CAM_CDM, "PERF_CTRL");
 
 	return ret;
-}
-
-bool cam_cdm_util_validate_cmd_buf(
-	uint32_t *cmd_buf_start, uint32_t *cmd_buf_end)
-{
-	uint32_t *buf_now = cmd_buf_start;
-	uint32_t *buf_end = cmd_buf_end;
-	uint32_t cmd = 0;
-	int i = 0;
-	struct cdm_regcontinuous_cmd *p_regcont_cmd = NULL;
-	struct cdm_regrandom_cmd *p_regrand_cmd = NULL;
-
-	if (!cmd_buf_start || !cmd_buf_end) {
-		CAM_ERR(CAM_CDM, "Invalid args");
-		return true;
-	}
-
-	do {
-		cmd = *buf_now;
-		cmd = cmd >> CAM_CDM_COMMAND_OFFSET;
-
-		switch (cmd) {
-		case CAM_CDM_CMD_DMI:
-		case CAM_CDM_CMD_DMI_32:
-		case CAM_CDM_CMD_DMI_64:
-			if (buf_now > buf_end)
-				return true;
-
-			buf_now += CDMCmdHeaderSizes[CAM_CDM_CMD_DMI];
-			break;
-		case CAM_CDM_CMD_REG_CONT:
-			p_regcont_cmd = (struct cdm_regcontinuous_cmd *)buf_now;
-			buf_now += CDMCmdHeaderSizes[CAM_CDM_CMD_REG_CONT];
-			for (i = 0; i < p_regcont_cmd->count; i++) {
-				if (buf_now > buf_end)
-					return true;
-
-				buf_now++;
-			}
-			break;
-		case CAM_CDM_CMD_REG_RANDOM:
-			p_regrand_cmd = (struct cdm_regrandom_cmd *)buf_now;
-			buf_now += CDMCmdHeaderSizes[CAM_CDM_CMD_REG_RANDOM];
-			for (i = 0; i < p_regrand_cmd->count; i++) {
-				if (buf_now > buf_end)
-					return true;
-
-				buf_now += 2;
-			}
-			break;
-		case CAM_CDM_CMD_BUFF_INDIRECT:
-			buf_now += CDMCmdHeaderSizes[CAM_CDM_CMD_BUFF_INDIRECT];
-			if (buf_now > buf_end)
-				return true;
-
-			break;
-		case CAM_CDM_CMD_GEN_IRQ:
-			buf_now += CDMCmdHeaderSizes[CAM_CDM_CMD_GEN_IRQ];
-			break;
-		case CAM_CDM_CMD_WAIT_EVENT:
-			buf_now += CDMCmdHeaderSizes[CAM_CDM_CMD_WAIT_EVENT];
-			break;
-		case CAM_CDM_CMD_CHANGE_BASE:
-			if (buf_now > buf_end)
-				return true;
-
-			buf_now += CDMCmdHeaderSizes[CAM_CDM_CMD_CHANGE_BASE];
-			break;
-		case CAM_CDM_CMD_PERF_CTRL:
-			buf_now += CDMCmdHeaderSizes[CAM_CDM_CMD_PERF_CTRL];
-			break;
-		case CAM_CDM_CMD_COMP_WAIT:
-			buf_now += CDMCmdHeaderSizes[CAM_CDM_CMD_COMP_WAIT];
-			break;
-		default:
-			CAM_ERR(CAM_CDM, "Invalid CMD: 0x%x buf 0x%x",
-				cmd, *buf_now);
-			return true;
-		}
-	} while (buf_now < cmd_buf_end);
-
-	return false;
 }
 
 void cam_cdm_util_dump_cmd_buf(
@@ -1166,7 +921,7 @@ void cam_cdm_util_dump_cmd_buf(
 			buf_now++;
 			break;
 		}
-	} while (buf_now < cmd_buf_end);
+	} while (buf_now <= cmd_buf_end);
 }
 
 static uint32_t cam_cdm_util_dump_reg_cont_cmd_v2(
@@ -1184,8 +939,8 @@ static uint32_t cam_cdm_util_dump_reg_cont_cmd_v2(
 	struct cam_cdm_cmd_dump_header *hdr;
 
 	p_regcont_cmd = (struct cdm_regcontinuous_cmd *)temp_ptr;
-	temp_ptr += cam_cdm_get_cmd_header_size(CAM_CDM_CMD_REG_CONT);
-	ret = cam_cdm_get_cmd_header_size(CAM_CDM_CMD_REG_CONT);
+	temp_ptr += cdm_get_cmd_header_size(CAM_CDM_CMD_REG_CONT);
+	ret = cdm_get_cmd_header_size(CAM_CDM_CMD_REG_CONT);
 
 	min_len = (sizeof(uint32_t) * p_regcont_cmd->count) +
 		sizeof(struct cam_cdm_cmd_dump_header) +
@@ -1235,8 +990,8 @@ static uint32_t cam_cdm_util_dump_reg_random_cmd_v2(
 	struct cam_cdm_cmd_dump_header *hdr;
 
 	p_regrand_cmd = (struct cdm_regrandom_cmd *)temp_ptr;
-	temp_ptr += cam_cdm_get_cmd_header_size(CAM_CDM_CMD_REG_RANDOM);
-	ret = cam_cdm_get_cmd_header_size(CAM_CDM_CMD_REG_RANDOM);
+	temp_ptr += cdm_get_cmd_header_size(CAM_CDM_CMD_REG_RANDOM);
+	ret = cdm_get_cmd_header_size(CAM_CDM_CMD_REG_RANDOM);
 
 	min_len = (2 * sizeof(uint32_t) * p_regrand_cmd->count) +
 		sizeof(struct cam_cdm_cmd_dump_header) + sizeof(uint32_t);
@@ -1298,7 +1053,7 @@ int cam_cdm_util_dump_cmd_bufs_v2(
 		case CAM_CDM_CMD_DMI:
 		case CAM_CDM_CMD_DMI_32:
 		case CAM_CDM_CMD_DMI_64:
-			buf_now += cam_cdm_get_cmd_header_size(CAM_CDM_CMD_DMI);
+			buf_now += cdm_get_cmd_header_size(CAM_CDM_CMD_DMI);
 			break;
 		case CAM_CDM_CMD_REG_CONT:
 			buf_now += cam_cdm_util_dump_reg_cont_cmd_v2(buf_now,
@@ -1309,27 +1064,27 @@ int cam_cdm_util_dump_cmd_bufs_v2(
 				dump_info);
 			break;
 		case CAM_CDM_CMD_BUFF_INDIRECT:
-			buf_now += cam_cdm_get_cmd_header_size(
+			buf_now += cdm_get_cmd_header_size(
 				CAM_CDM_CMD_BUFF_INDIRECT);
 			break;
 		case CAM_CDM_CMD_GEN_IRQ:
-			buf_now += cam_cdm_get_cmd_header_size(
+			buf_now += cdm_get_cmd_header_size(
 				CAM_CDM_CMD_GEN_IRQ);
 			break;
 		case CAM_CDM_CMD_WAIT_EVENT:
-			buf_now += cam_cdm_get_cmd_header_size(
+			buf_now += cdm_get_cmd_header_size(
 				CAM_CDM_CMD_WAIT_EVENT);
 			break;
 		case CAM_CDM_CMD_CHANGE_BASE:
-			buf_now += cam_cdm_get_cmd_header_size(
+			buf_now += cdm_get_cmd_header_size(
 				CAM_CDM_CMD_CHANGE_BASE);
 			break;
 		case CAM_CDM_CMD_PERF_CTRL:
-			buf_now += cam_cdm_get_cmd_header_size(
+			buf_now += cdm_get_cmd_header_size(
 				CAM_CDM_CMD_PERF_CTRL);
 			break;
 		case CAM_CDM_CMD_COMP_WAIT:
-			buf_now += cam_cdm_get_cmd_header_size(
+			buf_now += cdm_get_cmd_header_size(
 				CAM_CDM_CMD_COMP_WAIT);
 			break;
 		default:
@@ -1337,6 +1092,6 @@ int cam_cdm_util_dump_cmd_bufs_v2(
 			buf_now++;
 			break;
 		}
-	} while (buf_now < dump_info->src_end);
+	} while (buf_now <= dump_info->src_end);
 	return rc;
 }

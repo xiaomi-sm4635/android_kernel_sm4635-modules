@@ -1,22 +1,24 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/slab.h>
 #include <linux/mod_devicetable.h>
 #include <linux/of_device.h>
-#include <dt-bindings/msm-camera.h>
 #include "cam_tfe_csid_core.h"
 #include "cam_tfe_csid_dev.h"
 #include "cam_tfe_csid_hw_intf.h"
 #include "cam_debug_util.h"
-#include "camera_main.h"
 #include "cam_cpas_api.h"
+#include "camera_main.h"
+#include <dt-bindings/msm-camera.h>
 
 static struct cam_hw_intf *cam_tfe_csid_hw_list[CAM_TFE_CSID_HW_NUM_MAX] = {
 	0, 0, 0};
+
+static char csid_dev_name[8];
 
 static int cam_tfe_csid_component_bind(struct device *dev,
 	struct device *master_dev, void *data)
@@ -27,7 +29,7 @@ static int cam_tfe_csid_component_bind(struct device *dev,
 	struct cam_tfe_csid_hw         *csid_dev = NULL;
 	const struct of_device_id      *match_dev = NULL;
 	struct cam_tfe_csid_hw_info    *csid_hw_data = NULL;
-	uint32_t                        csid_dev_idx = 0;
+	uint32_t                        csid_dev_idx;
 	int                             rc = 0;
 	struct platform_device *pdev = to_platform_device(dev);
 
@@ -40,8 +42,7 @@ static int cam_tfe_csid_component_bind(struct device *dev,
 		goto err;
 	}
 
-	if (!cam_cpas_is_feature_supported(CAM_CPAS_ISP_FUSE, BIT(csid_dev_idx), NULL) ||
-		!cam_cpas_is_feature_supported(CAM_CPAS_ISP_LITE_FUSE, BIT(csid_dev_idx), NULL)) {
+	if (!cam_cpas_is_feature_supported(CAM_CPAS_ISP_FUSE, BIT(csid_dev_idx), NULL)) {
 		CAM_DBG(CAM_ISP, "CSID[%d] not supported based on fuse", csid_dev_idx);
 		goto err;
 	}
@@ -73,6 +74,10 @@ static int cam_tfe_csid_component_bind(struct device *dev,
 		goto free_dev;
 	}
 
+	memset(csid_dev_name, 0, sizeof(csid_dev_name));
+	snprintf(csid_dev_name, sizeof(csid_dev_name),
+		"csid%1u", csid_dev_idx);
+
 	csid_hw_intf->hw_idx = csid_dev_idx;
 	csid_hw_intf->hw_type = CAM_ISP_HW_TYPE_TFE_CSID;
 	csid_hw_intf->hw_priv = csid_hw_info;
@@ -80,7 +85,7 @@ static int cam_tfe_csid_component_bind(struct device *dev,
 	csid_hw_info->core_info = csid_dev;
 	csid_hw_info->soc_info.pdev = pdev;
 	csid_hw_info->soc_info.dev = &pdev->dev;
-	csid_hw_info->soc_info.dev_name = pdev->name;
+	csid_hw_info->soc_info.dev_name = csid_dev_name;
 	csid_hw_info->soc_info.index = csid_dev_idx;
 
 	csid_hw_data = (struct cam_tfe_csid_hw_info  *)match_dev->data;
@@ -121,12 +126,6 @@ void cam_tfe_csid_component_unbind(struct device *dev,
 	struct platform_device *pdev = to_platform_device(dev);
 
 	csid_dev = (struct cam_tfe_csid_hw *)platform_get_drvdata(pdev);
-
-	if (!csid_dev) {
-		CAM_ERR(CAM_ISP, "Error No data in csid_dev");
-		return;
-	}
-
 	csid_hw_intf = csid_dev->hw_intf;
 	csid_hw_info = csid_dev->hw_info;
 

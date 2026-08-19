@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CAM_CCI_DEV_H_
@@ -33,7 +32,6 @@
 #include "cam_soc_util.h"
 #include "cam_debug_util.h"
 #include "cam_req_mgr_workq.h"
-#include "cam_common_util.h"
 
 #define CCI_I2C_QUEUE_0_SIZE 128
 #define CCI_I2C_QUEUE_1_SIZE 32
@@ -45,8 +43,8 @@
 #define CCI_TIMEOUT msecs_to_jiffies(1500)
 #define NUM_QUEUES 2
 
+#define NUM_MASTERS 2
 #define MSM_CCI_WRITE_DATA_PAYLOAD_SIZE_11 11
-#define MSM_CCI_WRITE_DATA_PAYLOAD_SIZE_WORDS ((MSM_CCI_WRITE_DATA_PAYLOAD_SIZE_11 + 1) / 4)
 #define BURST_MIN_FREE_SIZE 8
 
 /* Max bytes that can be read per CCI read transaction */
@@ -55,14 +53,11 @@
 #define CCI_I2C_READ_MAX_RETRIES 3
 #define CCI_I2C_MAX_READ 20480
 #define CCI_I2C_MAX_WRITE 20480
-#define CCI_ENABLE_THRESHOLD_IRQ 1
 #define CCI_I2C_MAX_BYTE_COUNT 65535
 
 #define CAMX_CCI_DEV_NAME "cam-cci-driver"
 
-#define CAM_CCI_WORKQUEUE_NAME "cam_cci_wq"
-
-#define MAX_CCI 3
+#define MAX_CCI 2
 
 #define PRIORITY_QUEUE (QUEUE_0)
 #define SYNC_QUEUE (QUEUE_1)
@@ -140,17 +135,9 @@ struct cam_cci_master_info {
 	atomic_t done_pending[NUM_QUEUES];
 	spinlock_t lock_q[NUM_QUEUES];
 	struct semaphore master_sem;
-	struct mutex freq_cnt_lock;
+	spinlock_t freq_cnt_lock;
 	uint16_t freq_ref_cnt;
 	bool is_initilized;
-	struct completion th_burst_complete[NUM_QUEUES];
-	uint32_t th_irq_ref_cnt[NUM_QUEUES];
-	bool is_burst_enable[NUM_QUEUES];
-	uint32_t num_words_exec[NUM_QUEUES];
-	uint32_t *data_queue[NUM_QUEUES];
-	uint32_t num_words_in_data_queue[NUM_QUEUES];
-	int32_t data_queue_start_index[NUM_QUEUES];
-	int32_t half_queue_mark[NUM_QUEUES];
 };
 
 struct cam_cci_clk_params_t {
@@ -211,7 +198,6 @@ enum cam_cci_state_t {
  * @init_mutex:                 Mutex for maintaining refcount for attached
  *                              devices to cci during init/deinit.
  * @dump_en:                    To enable the selective dump
- * @is_probing:                 Flag to determine if we are probing a sensor
  */
 struct cci_device {
 	struct v4l2_subdev subdev;
@@ -243,7 +229,6 @@ struct cci_device {
 	uint32_t irqs_disabled;
 	struct mutex init_mutex;
 	uint64_t  dump_en;
-	bool is_probing;
 };
 
 enum cam_cci_i2c_cmd_type {
@@ -290,7 +275,6 @@ struct cam_sensor_cci_client {
 	uint16_t retries;
 	uint16_t id_map;
 	uint16_t cci_device;
-	bool is_probing;
 };
 
 struct cam_cci_ctrl {
@@ -303,7 +287,6 @@ struct cam_cci_ctrl {
 		struct cam_cci_wait_sync_cfg cci_wait_sync_cfg;
 		struct cam_cci_gpio_cfg gpio_cfg;
 	} cfg;
-	bool is_probing;
 };
 
 struct cci_write_async {
@@ -316,7 +299,6 @@ struct cci_write_async {
 };
 
 irqreturn_t cam_cci_irq(int irq_num, void *data);
-irqreturn_t cam_cci_threaded_irq(int irq_num, void *data);
 
 struct v4l2_subdev *cam_cci_get_subdev(int cci_dev_index);
 void cam_cci_dump_registers(struct cci_device *cci_dev,
