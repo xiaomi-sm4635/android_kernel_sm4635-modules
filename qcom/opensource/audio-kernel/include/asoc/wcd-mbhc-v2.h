@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #ifndef __WCD_MBHC_V2_H__
 #define __WCD_MBHC_V2_H__
@@ -137,13 +137,18 @@ do {                                                    \
 #define WCD_MBHC_JACK_BUTTON_MASK (SND_JACK_BTN_0 | SND_JACK_BTN_1 | \
 				  SND_JACK_BTN_2 | SND_JACK_BTN_3 | \
 				  SND_JACK_BTN_4 | SND_JACK_BTN_5)
+/* BSP.AUDIO - add for 3.5mm to typec */
+//#ifdef CONFIG_AUDIO_QGKI
+#define WCD_MBHC_JACK_USB_3_5_MASK (SND_JACK_HEADSET | SND_JACK_VIDEOOUT)
+//#endif
+/* end modify*/
 #define OCP_ATTEMPT 20
 #define HS_DETECT_PLUG_TIME_MS (3 * 1000)
 #define SPECIAL_HS_DETECT_TIME_MS (2 * 1000)
 #define MBHC_BUTTON_PRESS_THRESHOLD_MIN 250
 #define GND_MIC_SWAP_THRESHOLD 4
 #define GND_MIC_USBC_SWAP_THRESHOLD 2
-#define WCD_FAKE_REMOVAL_MIN_PERIOD_MS 100
+#define WCD_FAKE_REMOVAL_MIN_PERIOD_MS 800
 #define HS_VREF_MIN_VAL 1400
 #define FW_READ_ATTEMPTS 15
 #define FW_READ_TIMEOUT 4000000
@@ -154,6 +159,14 @@ do {                                                    \
 #define WCD_MBHC_BTN_PRESS_COMPL_TIMEOUT_MS  50
 #define ANC_DETECT_RETRY_CNT 7
 #define WCD_MBHC_SPL_HS_CNT  1
+
+/* BSP.AUDIO - add for 3.5mm to typec */
+//#ifdef CONFIG_AUDIO_QGKI
+/*add for typec_mode*/
+#define NOTHING_ATTACHED	0
+#define AUDIO_ADAPTER		8
+//#endif
+/* end modify*/
 
 enum wcd_mbhc_detect_logic {
 	WCD_DETECTION_LEGACY,
@@ -532,8 +545,6 @@ struct wcd_mbhc_cb {
 	void (*mbhc_moisture_detect_en)(struct wcd_mbhc *mbhc, bool enable);
 	void (*surge_reset_routine)(struct wcd_mbhc *mbhc);
 	void (*zdet_leakage_resistance)(struct wcd_mbhc *mbhc, bool enable);
-	int (*mbhc_force_micbias_disable)(struct snd_soc_component *component,
-				int micb_num);
 };
 
 struct wcd_mbhc_fn {
@@ -603,6 +614,11 @@ struct wcd_mbhc {
 
 	struct snd_soc_jack headset_jack;
 	struct snd_soc_jack button_jack;
+	/* BSP.AUDIO -  add for 3.5mm to typec */
+	//#ifdef CONFIG_AUDIO_QGKI
+	struct snd_soc_jack usb_3_5_jack;
+	//#endif
+	/* end modify*/
 	struct mutex codec_resource_lock;
 
 	/* Holds codec specific interrupt mapping */
@@ -625,11 +641,17 @@ struct wcd_mbhc {
 
 	struct wcd_mbhc_fn *mbhc_fn;
 	bool force_linein;
+	/* BSP.AUDIO - add for 3.5mm to typec */
+	//#ifdef CONFIG_AUDIO_QGKI
+	int usbc_mode;
+	//#endif
+	/* end modify*/
 	struct device_node *wcd_usbss_aatc_dev_np;
 	struct device_node *fsa_aatc_dev_np;
 	struct notifier_block aatc_dev_nb;
 
 	struct extcon_dev *extdev;
+	struct work_struct typec_work;
 };
 
 void wcd_mbhc_find_plug_and_report(struct wcd_mbhc *mbhc,

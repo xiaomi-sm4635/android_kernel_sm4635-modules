@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _WCD9378_INTERNAL_H
@@ -11,7 +11,6 @@
 #include <asoc/wcd-irq.h>
 #include <asoc/wcd-clsh.h>
 #include <soc/soundwire.h>
-#include <asoc/sdca-registers-api.h>
 #include "wcd9378-mbhc.h"
 #include "wcd9378.h"
 
@@ -97,8 +96,6 @@ struct wcd9378_priv {
 	struct wcd_clsh_cdc_info clsh_info;
 	/* mbhc module */
 	struct wcd9378_mbhc *mbhc;
-	struct sdca_debugfs_info *debugfs_info;
-	struct sdca_regdump_info *regdump_info;
 
 	u32 hph_mode;
 	u16 hph_gain;
@@ -141,10 +138,13 @@ struct wcd9378_priv {
 	struct snd_info_entry *version_entry;
 	struct snd_info_entry *variant_entry;
 	int flyback_cur_det_disable;
+	bool dev_up;
 	u8 tx_master_ch_map[WCD9378_MAX_SLAVE_CH_TYPES];
 	bool usbc_hs_status;
 	/* wcd to swr dmic notification */
 	bool notify_swr_dmic;
+	u8 swr_base_clk;
+	u8 swr_clk_scale;
 	struct blocking_notifier_head notifier;
 };
 

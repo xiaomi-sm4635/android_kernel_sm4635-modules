@@ -14,14 +14,10 @@ PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/q6_notifier_dlkm.ko\
 	$(KERNEL_MODULES_OUT)/snd_event_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wcd_core_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/mbhc_dlkm.ko \
-	$(KERNEL_MODULES_OUT)/sdca_registers_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wcd9xxx_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/stub_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/machine_dlkm.ko
-ifneq (,$(call is-board-platform-in-list2,volcano))
-PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/lpass_bt_swr_dlkm.ko
-endif
-ifeq (,$(call is-board-platform-in-list2,bengal holi blair))
+ifneq ($(call is-board-platform-in-list,bengal holi blair), true)
 PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/swr_haptics_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/hdmi_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/lpass_cdc_wsa2_macro_dlkm.ko \
@@ -30,7 +26,7 @@ PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/swr_haptics_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/lpass_cdc_rx_macro_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/lpass_cdc_tx_macro_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/lpass_cdc_dlkm.ko
-ifeq (,$(call is-board-platform-in-list2,bengal holi blair pitti))
+ifneq ($(call is-board-platform-in-list,bengal holi blair pitti), true)
 PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/swr_dmic_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wsa884x_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wsa883x_dlkm.ko \
@@ -41,17 +37,20 @@ PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/swr_dmic_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wcd9378_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wcd9378_slave_dlkm.ko
 endif
-ifeq (,$(call is-board-platform-in-list2,niobe pitti))
+ifneq ($(call is-board-platform-in-list,niobe pitti), true)
 PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/wcd939x_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wcd939x_slave_dlkm.ko
 endif
-ifneq (,$(call is-board-platform-in-list2, pitti))
+ifeq ($(call is-board-platform-in-list, pitti), true)
 PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/wsa881x_analog_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wcd9378_dlkm.ko \
+	$(KERNEL_MODULES_OUT)/fs1512_dlkm.ko \
+	$(KERNEL_MODULES_OUT)/sia8001_dlkm.ko \
+	$(KERNEL_MODULES_OUT)/lct_audio_info_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wcd9378_slave_dlkm.ko
 endif
 endif
-ifneq (,$(call is-board-platform-in-list2,bengal holi blair))
+ifeq ($(call is-board-platform-in-list,bengal holi blair), true)
 PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/bolero_cdc_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/va_macro_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/tx_macro_dlkm.ko \
@@ -60,12 +59,12 @@ PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/bolero_cdc_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wcd937x_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wcd937x_slave_dlkm.ko
 endif
-ifneq (,$(call is-board-platform-in-list2, holi blair))
+ifeq ($(call is-board-platform-in-list, holi blair), true)
 PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/wcd938x_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wcd938x_slave_dlkm.ko
 endif
 
-ifneq (,$(call is-board-platform-in-list2, gen4 msmnile))
+ifeq ($(call is-board-platform-in-list, gen4 msmnile), true)
 ifneq (,$(filter $(TARGET_BOARD_PLATFORM)$(TARGET_BOARD_SUFFIX), gen4_gvm msmnile_gvmq))
 PRODUCT_PACKAGES  += $(KERNEL_MODULES_OUT)/machine_dlkm.ko \
         $(KERNEL_MODULES_OUT)/stub_dlkm.ko

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/module.h>
 #include <linux/init.h>
@@ -32,6 +32,7 @@
 #include "wcd-mbhc-legacy.h"
 #include "wcd-mbhc-adc.h"
 #include <asoc/wcd-mbhc-v2-api.h>
+#include <linux/power_supply.h>
 
 static const unsigned int mbhc_ext_dev_supported_table[] = {
 	EXTCON_JACK_MICROPHONE,
@@ -1071,11 +1072,6 @@ static void wcd_mbhc_swch_irq_handler(struct wcd_mbhc *mbhc)
 			mbhc->mbhc_fn->wcd_mbhc_detect_plug_type(mbhc);
 	} else if ((mbhc->current_plug != MBHC_PLUG_TYPE_NONE)
 			&& !detection_type) {
-		/*Disable micbias2 before disable L_DET*/
-		if (mbhc->mbhc_cb->mbhc_force_micbias_disable)
-			mbhc->mbhc_cb->mbhc_force_micbias_disable(
-					component, MIC_BIAS_2);
-
 		/* Disable external voltage source to micbias if present */
 		if (mbhc->mbhc_cb->enable_mb_source)
 			mbhc->mbhc_cb->enable_mb_source(mbhc, false);
@@ -1712,6 +1708,56 @@ static int wcd_mbhc_set_keycode(struct wcd_mbhc *mbhc)
 	return result;
 }
 
+/* BSP.AUDIO -  add for 3.5mm to typec */
+//#ifdef CONFIG_AUDIO_QGKI
+extern int audio_get_prop_typec_mode(struct power_supply *psy);
+
+static void audio_typec_work(struct work_struct *work)
+{
+	struct power_supply *usb_psy;
+	union power_supply_propval mode;
+	struct wcd_mbhc *mbhc = container_of(work, struct wcd_mbhc, typec_work);
+
+	usb_psy = power_supply_get_by_name("usb");
+	if (!usb_psy) {
+		pr_err("get usb psy failed\n");
+		return;
+	}
+	mode.intval = audio_get_prop_typec_mode(usb_psy);
+	switch (mode.intval)
+	{
+		case AUDIO_ADAPTER:
+			if  (mbhc->usbc_mode == mode.intval) {
+				break; /* filter notifications received before */
+			}
+			pr_err("%s:typec_mode:%d, mbhc->usbc_mode:%d\n",__func__, mode.intval, mbhc->usbc_mode);
+			wcd_mbhc_jack_report(mbhc, &mbhc->usb_3_5_jack,
+						(SND_JACK_HEADSET | SND_JACK_VIDEOOUT),
+						WCD_MBHC_JACK_USB_3_5_MASK);
+			mbhc->usbc_mode = mode.intval;
+			break;
+		case NOTHING_ATTACHED:
+			if (mbhc->usbc_mode == mode.intval) {
+				break; /* filter notifications received before */
+			}
+			pr_err("%s:typec_mode:%d, mbhc->usbc_mode:%d\n",__func__, mode.intval, mbhc->usbc_mode);
+			wcd_mbhc_jack_report(mbhc, &mbhc->usb_3_5_jack,  0, WCD_MBHC_JACK_USB_3_5_MASK);
+			mbhc->usbc_mode = mode.intval;
+			break;
+		default:
+			break;
+	}
+}
+
+static int wcd_mbhc_non_usb_c_event_changed(struct notifier_block *nb, unsigned long evt,  void *ptr)
+{
+	struct wcd_mbhc *mbhc = container_of(nb, struct wcd_mbhc, aatc_dev_nb);
+	schedule_work(&mbhc->typec_work);
+	return 0;
+}
+//#endif
+/* end modify*/
+
 #if IS_ENABLED(CONFIG_QCOM_FSA4480_I2C) || IS_ENABLED(CONFIG_QCOM_WCD_USBSS_I2C)
 static int wcd_mbhc_usbc_ana_event_handler(struct notifier_block *nb,
 					   unsigned long mode, void *ptr)
@@ -1878,6 +1924,22 @@ int wcd_mbhc_start(struct wcd_mbhc *mbhc, struct wcd_mbhc_config *mbhc_cfg)
 		if (mbhc->fsa_aatc_dev_np)
 			rc = fsa4480_reg_notifier(&mbhc->aatc_dev_nb, mbhc->fsa_aatc_dev_np);
 #endif
+	} else {
+		if (mbhc->aatc_dev_nb.notifier_call == NULL){
+			mbhc->aatc_dev_nb.notifier_call = wcd_mbhc_non_usb_c_event_changed;
+			mbhc->aatc_dev_nb.priority = 0;
+			rc = power_supply_reg_notifier(&mbhc->aatc_dev_nb);
+			if (rc) {
+				dev_err(card->dev, "%s: power supply registration failed\n",
+					__func__);
+				goto err;
+			}
+		} else {
+			pr_warn("mbhc->aatc_dev_nb.notifier_call != NULL");
+		}
+		
+	//#endif
+	/* end modify*/
 	}
 
 	return rc;
@@ -1914,13 +1976,35 @@ void wcd_mbhc_stop(struct wcd_mbhc *mbhc)
 	}
 
 #if IS_ENABLED(CONFIG_QCOM_WCD_USBSS_I2C)
-	if (mbhc->mbhc_cfg->enable_usbc_analog && mbhc->wcd_usbss_aatc_dev_np)
+	if (mbhc->mbhc_cfg->enable_usbc_analog && mbhc->wcd_usbss_aatc_dev_np) {
 		wcd_usbss_unreg_notifier(&mbhc->aatc_dev_nb, mbhc->wcd_usbss_aatc_dev_np);
+	}
+	/* BSP.AUDIO - add for 3.5mm to typec */
+	//#ifdef CONFIG_AUDIO_QGKI
+	else {
+		if (mbhc->aatc_dev_nb.notifier_call != NULL){
+			power_supply_unreg_notifier(&mbhc->aatc_dev_nb);
+		}
+	}
+	//#endif
+	/* end modify*/
+
 #endif
 
 #if IS_ENABLED(CONFIG_QCOM_FSA4480_I2C)
-	if (mbhc->mbhc_cfg->enable_usbc_analog && mbhc->fsa_aatc_dev_np)
+	if (mbhc->mbhc_cfg->enable_usbc_analog && mbhc->fsa_aatc_dev_np) {
 		fsa4480_unreg_notifier(&mbhc->aatc_dev_nb, mbhc->fsa_aatc_dev_np);
+	}
+	/* BSP.AUDIO - add for 3.5mm to typec */
+	//#ifdef CONFIG_AUDIO_QGKI
+	else {
+		if (mbhc->aatc_dev_nb.notifier_call != NULL){
+			power_supply_unreg_notifier(&mbhc->aatc_dev_nb);
+		}
+	}
+	//#endif
+	/* end modify*/
+
 #endif
 
 	pr_debug("%s: leave\n", __func__);
@@ -2015,6 +2099,7 @@ int wcd_mbhc_init(struct wcd_mbhc *mbhc, struct snd_soc_component *component,
 	mbhc->swap_thr = GND_MIC_SWAP_THRESHOLD;
 	mbhc->hphl_cross_conn_thr = HPHL_CROSS_CONN_THRESHOLD;
 	mbhc->hphr_cross_conn_thr = HPHR_CROSS_CONN_THRESHOLD;
+	INIT_WORK(&mbhc->typec_work, audio_typec_work);
 
 	if (mbhc->intr_ids == NULL) {
 		pr_err("%s: Interrupt mapping not provided\n", __func__);
@@ -2063,6 +2148,16 @@ int wcd_mbhc_init(struct wcd_mbhc *mbhc, struct snd_soc_component *component,
 				__func__);
 			return ret;
 		}
+		/* BSP.AUDIO -  add for 3.5mm to typec */
+		//#ifdef CONFIG_AUDIO_QGKI
+		ret = snd_soc_card_jack_new(component->card, "USB_3_5 Jack",
+					    WCD_MBHC_JACK_USB_3_5_MASK, &mbhc->usb_3_5_jack);
+		if (ret) {
+			pr_err("%s: Failed to create new jack USB_3_5 Jack\n", __func__);
+			return ret;
+		}
+		//#endif
+		/* end modify*/
 
 		INIT_DELAYED_WORK(&mbhc->mbhc_firmware_dwork,
 				  wcd_mbhc_fw_read);

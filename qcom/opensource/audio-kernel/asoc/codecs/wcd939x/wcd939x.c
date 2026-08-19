@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -632,12 +632,6 @@ static int wcd939x_parse_port_mapping(struct device *dev,
 
 	for (i = 0; i < map_length; i++) {
 		port_num = dt_array[NUM_SWRS_DT_PARAMS * i];
-
-		if (port_num >= MAX_PORT || ch_iter >= MAX_CH_PER_PORT) {
-			dev_err(dev, "%s: Invalid port or channel number\n", __func__);
-			goto err_pdata_fail;
-		}
-
 		slave_port_type = dt_array[NUM_SWRS_DT_PARAMS * i + 1];
 		ch_mask = dt_array[NUM_SWRS_DT_PARAMS * i + 2];
 		ch_rate = dt_array[NUM_SWRS_DT_PARAMS * i + 3];
@@ -4665,7 +4659,6 @@ static struct snd_soc_component_driver soc_codec_dev_wcd939x = {
 	.resume = wcd939x_soc_codec_resume,
 };
 
-#if IS_ENABLED(CONFIG_QCOM_WCD_USBSS_I2C)
 static void wcd_usbss_set_ovp_threshold(u32 threshold)
 {
 	uint32_t ovp_regs[2][2] = {{WCD_USBSS_DP_EN, 0x00}, {WCD_USBSS_DN_EN, 0x00}};
@@ -4680,7 +4673,6 @@ static void wcd_usbss_set_ovp_threshold(u32 threshold)
 	/* Write updated register values */
 	wcd_usbss_register_update(ovp_regs, WCD_USBSS_WRITE, ARRAY_SIZE(ovp_regs));
 }
-#endif
 
 static int wcd939x_reset(struct device *dev)
 {

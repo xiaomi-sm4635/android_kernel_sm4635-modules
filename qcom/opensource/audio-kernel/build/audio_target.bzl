@@ -6,7 +6,7 @@ load("//msm-kernel:target_variants.bzl", "get_all_la_variants", "get_all_le_vari
 def define_blair(t, v, lt=None):
     print(t)
     define_target_modules(
-        target = t,
+        target = "blair",
         variant = v,
         registry = audio_modules,
         modules = [
@@ -55,7 +55,7 @@ def define_blair(t, v, lt=None):
 
 def define_niobe(t, v, lt=None):
     define_target_modules(
-        target = t,
+        target = "niobe",
         variant = v,
         registry = audio_modules,
         modules = [
@@ -113,7 +113,7 @@ def define_niobe(t, v, lt=None):
 def define_pineapple(t, v, lt=None):
     print(t)
     define_target_modules(
-        target = t,
+        target = "pineapple",
         variant = v,
         registry = audio_modules,
         modules = [
@@ -144,7 +144,6 @@ def define_pineapple(t, v, lt=None):
             "lpass_cdc_va_macro_dlkm",
             "lpass_cdc_rx_macro_dlkm",
             "lpass_cdc_tx_macro_dlkm",
-            "sdca_registers_dlkm",
             "wsa883x_dlkm",
             "wsa884x_dlkm",
             "wcd937x_dlkm",
@@ -166,7 +165,6 @@ def define_pineapple(t, v, lt=None):
             "CONFIG_BOLERO_VER_2P6",
             "CONFIG_WCD9XXX_CODEC_CORE_V2",
             "CONFIG_MSM_CDC_PINCTRL",
-            "CONFIG_SND_SOC_SDCA_REGISTERS",
             "CONFIG_SND_SOC_WCD_IRQ",
             "CONFIG_SND_SOC_WCD9XXX_V2",
             "CONFIG_SND_SOC_WCD_MBHC_ADC",
@@ -177,7 +175,7 @@ def define_pineapple(t, v, lt=None):
 
 def define_kalama(t, v, lt=None):
     define_target_modules(
-        target = t,
+        target = "kalama",
         variant = v,
         registry = audio_modules,
         modules = [
@@ -233,7 +231,7 @@ def define_kalama(t, v, lt=None):
 def define_pitti(t, v, lt=None):
     print(t)
     define_target_modules(
-        target = t,
+        target = "pitti",
         variant = v,
         registry = audio_modules,
         modules = [
@@ -254,7 +252,6 @@ def define_pitti(t, v, lt=None):
             "swr_haptics_dlkm",
             "wcd_core_dlkm",
             "mbhc_dlkm",
-            "sdca_registers_dlkm",
             "wcd9xxx_dlkm",
             "stub_dlkm",
             "hdmi_dlkm",
@@ -266,7 +263,10 @@ def define_pitti(t, v, lt=None):
             "lpass_cdc_wsa2_macro_dlkm",
             "wsa881x_analog_dlkm",
             "wcd9378_dlkm",
-            "wcd9378_slave_dlkm"
+            "wcd9378_slave_dlkm",
+            "lct_audio_info_dlkm",
+            "sia8001_dlkm",
+            "fs1512_dlkm",
         ],
         config_options = [
             "CONFIG_SND_SOC_PITTI",
@@ -277,11 +277,14 @@ def define_pitti(t, v, lt=None):
             "CONFIG_SOUNDWIRE_MSTR_CTRL",
             "CONFIG_WCD9XXX_CODEC_CORE_V2",
             "CONFIG_MSM_CDC_PINCTRL",
-            "CONFIG_SND_SOC_SDCA_REGISTERS",
             "CONFIG_SND_SOC_WCD_IRQ",
             "CONFIG_SND_SOC_WCD9XXX_V2",
             "CONFIG_SND_SOC_WCD_MBHC_ADC",
             "CONFIG_MSM_EXT_DISPLAY",
+            "CONFIG_LCT_AUDIO_INFO",
+            "CONFIG_SND_SOC_SIA8001",
+            "CONFIG_SND_SOC_FS1512",
+            "CONFIG_XIAOMI_AUDIO_MBHC",
         ],
         lunch_target = lt,
     )
@@ -289,7 +292,7 @@ def define_pitti(t, v, lt=None):
 def define_volcano(t, v, lt=None):
     print(t)
     define_target_modules(
-        target = t,
+        target = "volcano",
         variant = v,
         registry = audio_modules,
         modules = [
@@ -314,14 +317,12 @@ def define_volcano(t, v, lt=None):
             "swr_haptics_dlkm",
             "stub_dlkm",
             "hdmi_dlkm",
-            "lpass_bt_swr_dlkm",
             "lpass_cdc_dlkm",
             "lpass_cdc_wsa_macro_dlkm",
             "lpass_cdc_wsa2_macro_dlkm",
             "lpass_cdc_va_macro_dlkm",
             "lpass_cdc_rx_macro_dlkm",
             "lpass_cdc_tx_macro_dlkm",
-            "sdca_registers_dlkm",
             "wsa883x_dlkm",
             "wsa884x_dlkm",
             "wcd937x_dlkm",
@@ -341,7 +342,6 @@ def define_volcano(t, v, lt=None):
             "CONFIG_SOUNDWIRE_MSTR_CTRL",
             "CONFIG_SWRM_VER_1P7",
             "CONFIG_BOLERO_VER_2P6",
-            "CONFIG_SND_SOC_SDCA_REGISTERS",
             "CONFIG_WCD9XXX_CODEC_CORE_V2",
             "CONFIG_MSM_CDC_PINCTRL",
             "CONFIG_SND_SOC_WCD_IRQ",

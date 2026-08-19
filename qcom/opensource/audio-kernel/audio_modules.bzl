@@ -230,12 +230,6 @@ audio_modules.register(
     },
 )
 audio_modules.register(
-    name = "sdca_registers_dlkm",
-    path = ASOC_CODECS_PATH,
-    config_option = "CONFIG_SND_SOC_SDCA_REGISTERS",
-    srcs = ["sdca-registers-api.c"]
-)
-audio_modules.register(
     name = "swr_dmic_dlkm",
     path = ASOC_CODECS_PATH,
     config_option = "CONFIG_SND_SOC_SWR_DMIC",
@@ -282,12 +276,6 @@ audio_modules.register(
     config_option = "CONFIG_SND_SOC_MSM_HDMI_CODEC_RX",
     srcs = ["msm_hdmi_codec_rx.c"],
     deps = ["//vendor/qcom/opensource/mm-drivers/msm_ext_display:%b_msm_ext_display"]
-)
-audio_modules.register(
-    name = "lpass_bt_swr_dlkm",
-    path = ASOC_CODECS_PATH,
-    config_option = "CONFIG_LPASS_BT_SWR",
-    srcs = ["lpass-bt-swr.c"]
 )
 # >>>> ASOC/CODECS/LPASS-CDC MODULES <<<<
 audio_modules.register(
@@ -475,4 +463,35 @@ audio_modules.register(
     path = ASOC_CODECS_PATH + "/wcd9378",
     config_option = "CONFIG_SND_SOC_WCD9378_SLAVE",
     srcs = ["wcd9378-slave.c"]
+)
+# >>>> PAINFO MODULES <<<<
+audio_modules.register(
+    name = "lct_audio_info_dlkm",
+    path = ASOC_CODECS_PATH + "/lct_audio_info",
+    config_option = "CONFIG_LCT_AUDIO_INFO ",
+    srcs = [
+        "lct_audio_info.c",
+    ]
+)
+# >>>> SIA8001 MODULES <<<<
+audio_modules.register(
+    name = "sia8001_dlkm",
+    path = ASOC_CODECS_PATH + "/sia8001",
+    config_option = "CONFIG_SND_SOC_SIA8001",
+    srcs = [
+        "sipa.c",
+        "sipa_91xx.c",
+        "sipa_aux_dev_if.c",
+        "sipa_parameter.c",
+        "sipa_regmap.c",
+    ]
+)
+# >>>> FS1512 MODULES <<<<
+audio_modules.register(
+    name = "fs1512_dlkm",
+    path = ASOC_CODECS_PATH + "/fs1512",
+    config_option = "CONFIG_SND_SOC_FS1512",
+    srcs = [
+        "fs15xx.c",
+    ]
 )

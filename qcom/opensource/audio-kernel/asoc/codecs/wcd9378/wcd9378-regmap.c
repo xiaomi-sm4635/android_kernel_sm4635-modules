@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/regmap.h>
@@ -769,14 +769,8 @@ static struct reg_default wcd9378_defaults[] = {
 	{WCD9378_PDE42_REQ_PS,                   0x03},
 	{WCD9378_FU42_MUTE_CH1,                  0x01},
 	{WCD9378_FU42_MUTE_CH2,                  0x01},
-	{WCD9378_FU42_MUTE_CH1_CN,               0x01},
-	{WCD9378_FU42_MUTE_CH2_CN,               0x01},
 	{WCD9378_FU42_CH_VOL_CH1,                0xe200},
-	{WCD9378_FU42_CH_VOL_CH1_MSB,            0xe2},
-	{WCD9378_FU42_CH_VOL_CH1_LSB,            0x00},
 	{WCD9378_FU42_CH_VOL_CH2,                0xe200},
-	{WCD9378_FU42_CH_VOL_CH2_MSB,            0xe2},
-	{WCD9378_FU42_CH_VOL_CH2_LSB,            0x00},
 	{WCD9378_SU43_SELECTOR,                  0x01},
 	{WCD9378_SU45_SELECTOR,                  0x01},
 	{WCD9378_PDE47_REQ_PS,                   0x03},
@@ -850,31 +844,6 @@ static struct reg_default wcd9378_defaults[] = {
 	{WCD9378_MESSAGE1,                       0x00},
 	{WCD9378_MESSAGE2,                       0x00},
 };
-
-bool wcd9378_sdca_readable_register(unsigned int reg)
-{
-	if (reg <= WCD9378_BASE)
-		return false;
-
-	if (wcd9378_reg_access[WCD9378_REG(reg)] & RD_REG)
-		return true;
-	else
-		return false;
-}
-EXPORT_SYMBOL_GPL(wcd9378_sdca_readable_register);
-
-bool wcd9378_sdca_writeable_register(unsigned int reg)
-{
-	if (reg <= WCD9378_BASE)
-		return false;
-
-
-	if (wcd9378_reg_access[WCD9378_REG(reg)] & WR_REG)
-		return true;
-	else
-		return false;
-}
-EXPORT_SYMBOL_GPL(wcd9378_sdca_writeable_register);
 
 static bool wcd9378_readable_register(struct device *dev, unsigned int reg)
 {

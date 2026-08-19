@@ -18,7 +18,6 @@ LOCAL_MODULE_KO_DIRS += soc/swr_ctrl_dlkm.ko
 LOCAL_MODULE_KO_DIRS += soc/snd_event_dlkm.ko
 LOCAL_MODULE_KO_DIRS += asoc/codecs/wcd_core_dlkm.ko
 LOCAL_MODULE_KO_DIRS += asoc/codecs/mbhc_dlkm.ko
-LOCAL_MODULE_KO_DIRS += asoc/codecs/sdca_registers_dlkm.ko
 LOCAL_MODULE_KO_DIRS += asoc/codecs/swr_dmic_dlkm.ko
 LOCAL_MODULE_KO_DIRS += asoc/codecs/wcd9xxx_dlkm.ko
 LOCAL_MODULE_KO_DIRS += asoc/codecs/swr_haptics_dlkm.ko
@@ -40,7 +39,6 @@ LOCAL_MODULE_KO_DIRS += asoc/codecs/wcd939x/wcd939x_dlkm.ko
 LOCAL_MODULE_KO_DIRS += asoc/codecs/wcd939x/wcd939x_slave_dlkm.ko
 LOCAL_MODULE_KO_DIRS += asoc/codecs/wcd9378/wcd9378_dlkm.ko
 LOCAL_MODULE_KO_DIRS += asoc/codecs/wcd9378/wcd9378_slave_dlkm.ko
-LOCAL_MODULE_KO_DIRS += asoc/codecs/lpass_bt_swr_dlkm.ko
 LOCAL_MODULE_KO_DIRS += asoc/codecs/hdmi_dlkm.ko
 endif
 
@@ -64,7 +62,6 @@ LOCAL_MODULE_KO_DIRS += soc/swr_ctrl_dlkm.ko
 LOCAL_MODULE_KO_DIRS += soc/snd_event_dlkm.ko
 LOCAL_MODULE_KO_DIRS += asoc/codecs/wcd_core_dlkm.ko
 LOCAL_MODULE_KO_DIRS += asoc/codecs/mbhc_dlkm.ko
-LOCAL_MODULE_KO_DIRS += asoc/codecs/sdca_registers_dlkm.ko
 LOCAL_MODULE_KO_DIRS += asoc/codecs/wcd9xxx_dlkm.ko
 LOCAL_MODULE_KO_DIRS += asoc/codecs/swr_haptics_dlkm.ko
 LOCAL_MODULE_KO_DIRS += asoc/codecs/stub_dlkm.ko
@@ -79,6 +76,9 @@ LOCAL_MODULE_KO_DIRS += asoc/codecs/wsa881x_analog_dlkm.ko
 LOCAL_MODULE_KO_DIRS += asoc/codecs/wcd9378/wcd9378_dlkm.ko
 LOCAL_MODULE_KO_DIRS += asoc/codecs/wcd9378/wcd9378_slave_dlkm.ko
 LOCAL_MODULE_KO_DIRS += asoc/codecs/hdmi_dlkm.ko
+LOCAL_MODULE_KO_DIRS += asoc/codecs/lct_audio_info/lct_audio_info_dlkm.ko
+LOCAL_MODULE_KO_DIRS += asoc/codecs/fs1512/fs1512_dlkm.ko
+LOCAL_MODULE_KO_DIRS += asoc/codecs/sia8001/sia8001_dlkm.ko
 endif
 
 ifeq ($(call is-board-platform-in-list,blair),true)
