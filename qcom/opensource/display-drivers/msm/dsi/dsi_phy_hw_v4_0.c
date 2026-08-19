@@ -456,9 +456,8 @@ static void dsi_phy_hw_dphy_enable(struct dsi_phy_hw *phy,
 	DSI_W32(phy, DSIPHY_CMN_VREG_CTRL_0, vreg_ctrl_0);
 	DSI_W32(phy, DSIPHY_CMN_VREG_CTRL_1, vreg_ctrl_1);
 	DSI_W32(phy, DSIPHY_CMN_CTRL_3, 0x00);
-	DSI_W32(phy, DSIPHY_CMN_GLBL_STR_SWI_CAL_SEL_CTRL,
-					glbl_str_swi_cal_sel_ctrl);
-	DSI_W32(phy, DSIPHY_CMN_GLBL_HSTX_STR_CTRL_0, glbl_hstx_str_ctrl_0);
+	DSI_W32(phy, DSIPHY_CMN_GLBL_STR_SWI_CAL_SEL_CTRL, 0x01);
+	DSI_W32(phy, DSIPHY_CMN_GLBL_HSTX_STR_CTRL_0, 0xEE);
 	DSI_W32(phy, DSIPHY_CMN_GLBL_PEMPH_CTRL_0, 0x00);
 	DSI_W32(phy, DSIPHY_CMN_GLBL_RESCODE_OFFSET_TOP_CTRL,
 			glbl_rescode_top_ctrl);

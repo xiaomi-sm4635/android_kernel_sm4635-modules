@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1583,22 +1583,6 @@ static int dp_display_get_mst_pbn_div(struct dp_display *dp_display)
 	return link_rate * lane_count / 54000;
 }
 
-static int dp_display_get_active_stream_count(struct dp_display *dp_display)
-{
-	struct dp_display_private *dp;
-	int count = 0;
-
-	if (!dp_display) {
-		DP_ERR("invalid params\n");
-		return 0;
-	}
-
-	dp = container_of(dp_display, struct dp_display_private, dp_display);
-	count = dp->active_stream_cnt;
-
-	return count;
-}
-
 static int dp_display_stream_pre_disable(struct dp_display_private *dp,
 			struct dp_panel *dp_panel)
 {
@@ -2031,10 +2015,6 @@ static void dp_display_disconnect_work(struct work_struct *work)
 			struct dp_display_private, disconnect_work);
 
 	dp_display_handle_disconnect(dp, false);
-
-	if (dp->debug->sim_mode && dp_display_state_is(DP_STATE_ABORTED))
-		dp_display_host_deinit(dp);
-
 	dp->debug->abort(dp->debug);
 }
 
@@ -2050,9 +2030,6 @@ static int dp_display_usb_notifier(struct notifier_block *nb,
 		dp_display_state_add(DP_STATE_ABORTED);
 		dp->ctrl->abort(dp->ctrl, true);
 		dp->aux->abort(dp->aux, true);
-
-		dp->power->park_clocks(dp->power);
-
 		queue_work(dp->wq, &dp->disconnect_work);
 	}
 
@@ -2157,7 +2134,6 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 	}
 
 	g_dp_display->is_mst_supported = dp->parser->has_mst;
-	g_dp_display->dp_mst_lm_merge_enable = dp->parser->dp_mst_lm_merge_en;
 	g_dp_display->dsc_cont_pps = dp->parser->dsc_continuous_pps;
 
 	dp->catalog = dp_catalog_get(dev, dp->parser);
@@ -3012,7 +2988,6 @@ static int dp_display_validate_topology(struct dp_display_private *dp,
 	bool dsc_capable = dp_mode->capabilities & DP_PANEL_CAPS_DSC;
 	u32 fps = dp_mode->timing.refresh_rate;
 	int avail_lm = 0;
-	bool mst_cap = false;
 
 	mutex_lock(&dp->accounting_lock);
 
@@ -3020,24 +2995,6 @@ static int dp_display_validate_topology(struct dp_display_private *dp,
 	if (rc) {
 		DP_ERR("error getting mixer count. rc:%d\n", rc);
 		goto end;
-	}
-
-	mst_cap = dp_panel->read_mst_cap(dp_panel);
-
-	if (dp->parser->has_mst && dp->parser->dp_mst_lm_merge_en &&
-			mst_cap && avail_res->num_lm) {
-		if (avail_res->num_lm == 1) {
-			/* if only 1 lm is available, assign it */
-			num_lm = 1;
-		} else {
-			if (dp->active_stream_cnt) {
-				/* no streams left, assign from available lm */
-				num_lm = min(num_lm, avail_res->num_lm);
-			} else {
-				/* keep at least 1 lm for second stream, assign from rest */
-				num_lm = min(num_lm, avail_res->num_lm - 1);
-			}
-		}
 	}
 
 	/* Merge using DSC, if enabled */
@@ -3763,52 +3720,6 @@ static void dp_display_wakeup_phy_layer(struct dp_display *dp_display,
 		hpd->wakeup_phy(hpd, wakeup);
 }
 
-static int dp_display_get_display_type(struct dp_display *dp_display,
-		const char **display_type)
-{
-	struct dp_display_private *dp;
-	struct device_node *of_node;
-
-	if (!dp_display || !display_type) {
-		pr_err("invalid input\n");
-		return -EINVAL;
-	}
-
-	dp = container_of(dp_display, struct dp_display_private, dp_display);
-
-	if (dp->parser)
-		*display_type = dp->parser->display_type;
-	else {
-		of_node = dp->pdev->dev.of_node;
-		*display_type = of_get_property(of_node, "qcom,display-type",
-					NULL);
-	}
-	return 0;
-}
-
-static int dp_display_mst_get_fixed_topology_display_type(
-		struct dp_display *dp_display, u32 strm_id,
-		const char **display_type)
-{
-	struct dp_display_private *dp;
-
-	if (!dp_display || !display_type) {
-		pr_err("invalid input\n");
-		return -EINVAL;
-	}
-
-	if (strm_id >= DP_STREAM_MAX) {
-		pr_err("invalid stream id:%d\n", strm_id);
-		return -EINVAL;
-	}
-
-	dp = container_of(dp_display, struct dp_display_private, dp_display);
-
-	*display_type = dp->parser->mst_fixed_display_type[strm_id];
-
-	return 0;
-}
-
 static int dp_display_probe(struct platform_device *pdev)
 {
 	int rc = 0;
@@ -3892,10 +3803,6 @@ static int dp_display_probe(struct platform_device *pdev)
 					dp_display_get_available_dp_resources;
 	g_dp_display->clear_reservation = dp_display_clear_reservation;
 	g_dp_display->get_mst_pbn_div = dp_display_get_mst_pbn_div;
-	g_dp_display->get_active_stream_count = dp_display_get_active_stream_count;
-	g_dp_display->get_display_type = dp_display_get_display_type;
-	g_dp_display->mst_get_fixed_topology_display_type =
-				dp_display_mst_get_fixed_topology_display_type;
 
 	rc = component_add(&pdev->dev, &dp_display_comp_ops);
 	if (rc) {

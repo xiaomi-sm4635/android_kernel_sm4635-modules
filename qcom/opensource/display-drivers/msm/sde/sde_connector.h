@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -15,6 +15,7 @@
 #include "msm_prop.h"
 #include "sde_kms.h"
 #include "sde_fence.h"
+#include "mi_sde_connector.h"
 
 #define SDE_CONNECTOR_NAME_SIZE	16
 #define SDE_CONNECTOR_DHDR_MEMPOOL_MAX_SIZE	SZ_32
@@ -568,7 +569,6 @@ struct sde_misr_sign {
  * @qsync_mode: Cached Qsync mode, 0=disabled, 1=continuous mode
  * @qsync_updated: Qsync settings were updated
  * @ept_fps: ept fps is updated, 0 means ept_fps is disabled
- * @capabilities: display capabilities of the hardware
  * @colorspace_updated: Colorspace property was updated
  * @last_cmd_tx_sts: status of the last command transfer
  * @hdr_capable: external hdr support present
@@ -646,8 +646,6 @@ struct sde_connector {
 	bool qsync_updated;
 	u32 ept_fps;
 
-	u32 capabilities;
-
 	bool colorspace_updated;
 
 	bool last_cmd_tx_sts;
@@ -663,6 +661,12 @@ struct sde_connector {
 	bool hwfence_wb_retire_fences_enable;
 
 	u32 max_mode_width;
+
+/* LQ.LCM - 2024.5.27- transplant mi disp from zeus start */
+	struct mi_sde_cdev *mi_cdev;
+	struct mi_layer_flags mi_layer_flags;
+	u32 qsync_min_fps_index;
+/* LQ.LCM - 2024.5.27 - end modify */
 };
 
 /**
@@ -1380,6 +1384,9 @@ int sde_connector_esd_status(struct drm_connector *connector);
 
 const char *sde_conn_get_topology_name(struct drm_connector *conn,
 		struct msm_display_topology topology);
+
+void _sde_connector_report_panel_dead(struct sde_connector *conn,
+		bool skip_pre_kickoff);
 
 /*
  * sde_connector_is_line_insertion_supported - get line insertion

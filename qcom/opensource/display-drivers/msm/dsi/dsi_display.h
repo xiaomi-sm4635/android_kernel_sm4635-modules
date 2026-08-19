@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -146,8 +146,6 @@ struct dsi_display_ext_bridge {
  * @list:             List pointer.
  * @is_active:        Is display active.
  * @is_cont_splash_enabled:  Is continuous splash enabled
- * @is_hibernate_splash_enabled: Is hibernation splash enabled.
- * @is_hibernate_exit: Is hibernate exit.
  * @sw_te_using_wd:   Is software te enabled
  * @display_lock:     Mutex for dsi_display interface.
  * @disp_te_gpio:     GPIO for panel TE interrupt.
@@ -213,8 +211,6 @@ struct dsi_display {
 	const char *display_type;
 	struct list_head list;
 	bool is_cont_splash_enabled;
-	bool is_hibernate_splash_enabled;
-	bool is_hibernate_exit;
 	bool sw_te_using_wd;
 	struct mutex display_lock;
 	int disp_te_gpio;
@@ -860,5 +856,11 @@ int dsi_display_get_panel_scan_line(void *display, u16 *scan_line, ktime_t *scan
  *
  */
 void dsi_display_report_dead(struct dsi_display *display);
+
+/* LQ.LCM - 2024.5.27 - transplant mi disp from zeus start */
+char *mi_dsi_display_get_cmdline_panel_info(struct dsi_display *display);
+int dsi_display_cmd_rx(struct dsi_display *display, struct dsi_cmd_desc *cmd);
+int dsi_display_ctrl_get_host_init_state(struct dsi_display *dsi_display, bool *state);
+/* 2024.5.27 - end modify */
 
 #endif /* _DSI_DISPLAY_H_ */

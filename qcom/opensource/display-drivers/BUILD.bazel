@@ -1,4 +1,4 @@
-load("//build/kernel/kleaf:kernel.bzl", "ddk_headers", "ddk_uapi_headers")
+load("//build/kernel/kleaf:kernel.bzl", "ddk_headers")
 
 package(
     default_visibility = [
@@ -13,20 +13,13 @@ ddk_headers(
     includes = ["include"]
 )
 
-filegroup(
-    name = "_display_uapi_headers",
-    srcs = glob([
-        "include/uapi/display/drm/*.h",
-        "include/uapi/display/hdcp/*.h",
-        "include/uapi/display/media/*.h",
-    ]),
-)
-
 ddk_headers(
     name = "uapi_headers",
-    hdrs = [
-        ":_display_uapi_headers",
-    ],
+    hdrs = glob([
+      "include/uapi/display/drm/*.h",
+      "include/uapi/display/hdcp/*.h",
+      "include/uapi/display/media/*.h",
+    ]),
     includes = ["include/uapi/display"]
 )
 
@@ -44,6 +37,14 @@ ddk_headers(
       "msm/dsi/*.h",
     ]),
     includes = ["msm/dsi"]
+)
+
+ddk_headers(
+    name = "mi_disp_headers",
+    hdrs = glob([
+      "msm/mi_disp/*.h",
+    ]),
+    includes = ["msm/mi_disp"]
 )
 
 ddk_headers(
@@ -72,16 +73,12 @@ ddk_headers(
 
 ddk_headers(
     name = "display_drivers_headers",
-    hdrs = [ ":linux_includes", ":uapi_headers", ":msm_headers",":dp_headers",":dsi_headers",":sde_headers",":rotator_headers"]
+    hdrs = [ ":linux_includes", ":uapi_headers", ":msm_headers",":dp_headers",":dsi_headers",":sde_headers",":rotator_headers",":mi_disp_headers"]
 )
 
-ddk_uapi_headers(
-    name = "msm_display_ddk_uapi_headers",
-    srcs = [
-        ":_display_uapi_headers",
-    ],
-    out = "display-uapi-headers.tar.gz",
-    kernel_build = "//:target_kernel_build",
+config_setting(
+    name = "factory_build",
+    define_values = { "FACTORY_BUILD" : "1" }
 )
 
 load(":target.bzl", "define_display_target")

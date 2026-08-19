@@ -56,7 +56,6 @@
 #define SDE_HW_VER_850	SDE_HW_VER(8, 5, 0) /* cape */
 #define SDE_HW_VER_870	SDE_HW_VER(8, 7, 0) /* pitti */
 #define SDE_HW_VER_900	SDE_HW_VER(9, 0, 0) /* kalama */
-#define SDE_HW_VER_910	SDE_HW_VER(9, 1, 0) /* neo */
 #define SDE_HW_VER_A00	SDE_HW_VER(10, 0, 0) /* pineapple */
 #define SDE_HW_VER_A10	SDE_HW_VER(10, 1, 0) /* cliffs */
 #define SDE_HW_VER_A20	SDE_HW_VER(10, 2, 0) /* volcano */
@@ -91,7 +90,6 @@
 #define IS_CAPE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_850)
 #define IS_PITTI_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_870)
 #define IS_KALAMA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_900)
-#define IS_NEO_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_910)
 #define IS_PINEAPPLE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_A00)
 #define IS_CLIFFS_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_A10)
 #define IS_VOLCANO_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_A20)
@@ -786,7 +784,6 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_DEDICATED_CWB  Dedicated-CWB supported
  * @SDE_FEATURE_DUAL_DEDICATED_CWB   Dual Dedicated-CWB supported
  * @SDE_FEATURE_WB_ROTATION    Support for image rotation through WB block
- * @SDE_FEATURE_ENABLE_HIBERNATION         Hibernation is supported
  * @SDE_FEATURE_3D_MERGE_RESET 3D merge reset supported
  * @SDE_FEATURE_DECIMATION     Decimation supported
  * @SDE_FEATURE_COMBINED_ALPHA Combined Alpha supported
@@ -835,7 +832,6 @@ enum sde_mdss_features {
 	SDE_FEATURE_DUAL_DEDICATED_CWB,
 	SDE_FEATURE_WB_ROTATION,
 	SDE_FEATURE_IDLE_PC,
-	SDE_FEATURE_ENABLE_HIBERNATION,
 	SDE_FEATURE_3D_MERGE_RESET,
 	SDE_FEATURE_DECIMATION,
 	SDE_FEATURE_COMBINED_ALPHA,
@@ -1344,7 +1340,6 @@ struct sde_mdp_cfg {
  * @debugfs_ctrl:           uidle is enabled/disabled through debugfs
  * @perf_cntr_en:           performance counters are enabled/disabled
  * @dirty:                  dirty flag for uidle update
- * @fal10_override:         flag to override fal10 veto
  */
 struct sde_uidle_cfg {
 	SDE_HW_BLK_INFO;
@@ -1365,7 +1360,6 @@ struct sde_uidle_cfg {
 	bool debugfs_ctrl;
 	bool perf_cntr_en;
 	bool dirty;
-	bool fal10_override;
 };
 
 /* struct sde_mdp_cfg : MDP TOP-BLK instance info
@@ -1994,7 +1988,6 @@ struct sde_perf_cfg {
  * @ipcc_client_phys_id dpu ipcc client id for the hw, physical client id if supported
  * @ppb_sz_program      enum value for pingpong buffer size programming choice by hw
  * @ppb_buf_max_lines   maximum lines needed for pingpong latency buffer size
- * @capabilities	display capabilities of the hardware
  */
 struct sde_mdss_cfg {
 	/* Block Revisions */
@@ -2121,8 +2114,6 @@ struct sde_mdss_cfg {
 	enum sde_ppb_size_option ppb_sz_program;
 	u32 ppb_buf_max_lines;
 	u32 ddr_list_index;
-
-	u32 capabilities;
 };
 
 struct sde_mdss_hw_cfg_handler {

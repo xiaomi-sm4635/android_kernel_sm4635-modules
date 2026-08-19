@@ -1,6 +1,9 @@
 load(":display_driver_build.bzl", "display_module_entry")
 
-display_driver_modules = display_module_entry([":display_drivers_headers"])
+display_driver_modules = display_module_entry([
+                            ":display_drivers_headers",
+                            "//msm-kernel:mi_irq_headers",
+                        ])
 module_entry = display_driver_modules.register
 
 #---------- MSM-DRM MODULE -------------------------
@@ -138,6 +141,28 @@ module_entry(
             "msm/dsi/dsi_panel.c",
             "msm/dsi/dsi_clk_manager.c",
             "msm/dsi/dsi_display_test.c",
+            "msm/dsi/lcd_bias.c",
+         ],
+         "CONFIG_DRM_MSM_MI_DISP" : [
+	    "msm/mi_disp/mi_cooling_device.c",
+            "msm/mi_disp/mi_disp_core.c",
+            "msm/mi_disp/mi_disp_debugfs.c",
+            "msm/mi_disp/mi_disp_feature.c",
+            "msm/mi_disp/mi_disp_file.c",
+            "msm/mi_disp/mi_disp_flatmode.c",
+            "msm/mi_disp/mi_disp_lhbm.c",
+            "msm/mi_disp/mi_disp_log.c",
+            "msm/mi_disp/mi_disp_parser.c",
+            "msm/mi_disp/mi_disp_print.c",
+            "msm/mi_disp/mi_disp_procfs.c",
+            "msm/mi_disp/mi_disp_sysfs.c",
+            "msm/mi_disp/mi_dsi_display.c",
+            "msm/mi_disp/mi_dsi_panel.c",
+            "msm/mi_disp/mi_dsi_panel_count.c",
+            "msm/mi_disp/mi_hwconf_manager.c",
+            "msm/mi_disp/mi_sde_connector.c",
+            "msm/mi_disp/mi_sde_crtc.c",
+            "msm/mi_disp/mi_sde_encoder.c",
          ],
          "CONFIG_DSI_PARSER" : [
             "msm/dsi/dsi_parser.c",
@@ -176,6 +201,9 @@ module_entry(
             },
       },
       config_deps = {
+        "CONFIG_DRM_MSM" : [
+            "//vendor/qcom/opensource/touch-drivers:%b_touch_drivers"
+        ],
         "CONFIG_HDCP_QSEECOM" : [
             "//vendor/qcom/opensource/securemsm-kernel:%b_hdcp_qseecom_dlkm"
         ],

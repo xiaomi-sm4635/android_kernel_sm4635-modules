@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -12,7 +12,6 @@
 #include <linux/bitops.h>
 #include <linux/errno.h>
 #include <linux/backlight.h>
-#include <linux/i2c.h>
 #include <drm/drm_panel.h>
 #include <drm/msm_drm.h>
 #include <drm/msm_drm_pp.h>
@@ -23,6 +22,16 @@
 #include "dsi_pwr.h"
 #include "dsi_parser.h"
 #include "msm_drv.h"
+
+/* LQ.LCM - 2024.5.27 - transplant mi disp from zeus start */
+#include "mi_dsi_panel.h"
+#include "mi_dsi_panel_count.h"
+/* 2024.5.7 - end modify */
+
+/* added DISPLAY_FACTORY_BUILD macro to disable Some uesless function on factory_build.*/
+#ifndef CONFIG_FACTORY_BUILD
+#define DISPLAY_ESD_ENABLE
+#endif
 
 #define MAX_BL_LEVEL 4096
 #define MAX_BL_SCALE_LEVEL 1024
@@ -136,6 +145,7 @@ struct dsi_backlight_config {
 	u32 bl_level;
 	u32 bl_scale;
 	u32 bl_scale_sv;
+	u32 bl_lcd_number;
 	bool bl_inverted_dbv;
 	/* digital dimming backlight LUT */
 	struct drm_msm_dimming_bl_lut *dimming_bl_lut;
@@ -169,6 +179,8 @@ struct dsi_panel_reset_config {
 	int reset_gpio;
 	int disp_en_gpio;
 	int lcd_mode_sel_gpio;
+	int lcm_enp_gpio;
+	int lcm_enn_gpio;
 	u32 mode_sel_state;
 };
 
@@ -192,30 +204,16 @@ struct drm_panel_esd_config {
 	u8 *return_buf;
 	u8 *status_buf;
 	u32 groups;
+
+	int esd_err_irq_gpio;
+	int esd_err_irq;
+	int esd_err_irq_flags;
+
 };
 
 struct dsi_panel_spr_info {
 	bool enable;
 	enum msm_display_spr_pack_type pack_type;
-};
-
-struct dsi_panel_i2c_cmd {
-	const u8 *data;
-	u32 len;
-	u32 post_wait_ms;
-	u8 slave_addr;
-};
-
-struct dsi_panel_i2c_cmd_set {
-	struct dsi_panel_i2c_cmd *cmds;
-	u32 count;
-};
-
-struct dsi_panel_i2c_config {
-	bool i2c_support;
-	struct i2c_adapter *left_adapter;
-	struct i2c_adapter *right_adapter;
-	struct dsi_panel_i2c_cmd_set cmd_set;
 };
 
 struct dsi_panel;
@@ -230,11 +228,6 @@ struct dsi_panel_ops {
 	int (*parse_gpios)(struct dsi_panel *panel);
 	int (*parse_power_cfg)(struct dsi_panel *panel);
 	int (*trigger_esd_attack)(struct dsi_panel *panel);
-};
-
-struct dsi_panel_calib_data {
-	char *data;
-	size_t len;
 };
 
 struct dsi_panel {
@@ -279,9 +272,10 @@ struct dsi_panel {
 	bool ulps_suspend_enabled;
 	bool allow_phy_power_off;
 	bool reset_gpio_always_on;
-	bool calibration_enabled;
 	atomic_t esd_recovery_pending;
 
+	bool panel_status;
+	bool esd_status;
 	bool panel_initialized;
 	bool te_using_watchdog_timer;
 	struct dsi_qsync_capabilities qsync_caps;
@@ -301,8 +295,14 @@ struct dsi_panel {
 	enum dsi_panel_physical_type panel_type;
 
 	struct dsi_panel_ops panel_ops;
-	struct dsi_panel_calib_data calib_data;
-	struct dsi_panel_i2c_config i2c_config;
+
+/* LQ.LCM - 2024.5.27 - transplant mi disp from zeus start */
+	struct drm_panel_build_id_config id_config;
+	struct drm_panel_wp_config wp_config;
+	struct mi_dsi_panel_cfg mi_cfg;
+	struct mi_dsi_panel_count mi_count;
+	bool qsync_enable;
+/* LQ.LCM - 2024.5.27 - end modify */
 };
 
 static inline bool dsi_panel_ulps_feature_enabled(struct dsi_panel *panel)
@@ -439,4 +439,14 @@ int dsi_panel_create_cmd_packets(const char *data, u32 length, u32 count,
 void dsi_panel_destroy_cmd_packets(struct dsi_panel_cmd_set *set);
 
 void dsi_panel_dealloc_cmd_packets(struct dsi_panel_cmd_set *set);
+
+/* xiaomi add start */
+int dsi_panel_parse_cmd_sets_sub(struct dsi_panel_cmd_set *cmd,
+					enum dsi_cmd_set_type type,
+					struct dsi_parser_utils *utils);
+int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
+		enum dsi_cmd_set_type type);
+int dsi_panel_update_backlight(struct dsi_panel *panel, u32 bl_lvl);
+/* xiaomi add end */
+
 #endif /* _DSI_PANEL_H_ */

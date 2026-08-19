@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -1901,17 +1901,10 @@ static int _sde_encoder_update_rsc_client(
 void sde_encoder_irq_control(struct drm_encoder *drm_enc, bool enable)
 {
 	struct sde_encoder_virt *sde_enc;
-	struct sde_kms *sde_kms = NULL;
 	int i;
 
 	if (!drm_enc) {
 		SDE_ERROR("invalid encoder\n");
-		return;
-	}
-
-	sde_kms = sde_encoder_get_kms(drm_enc);
-	if (!sde_kms) {
-		SDE_ERROR("invalid kms\n");
 		return;
 	}
 
@@ -1927,7 +1920,7 @@ void sde_encoder_irq_control(struct drm_encoder *drm_enc, bool enable)
 		if (phys && phys->ops.dynamic_irq_control)
 			phys->ops.dynamic_irq_control(phys, enable);
 	}
-	sde_kms_cpu_vote_for_irq(sde_kms, enable);
+	sde_kms_cpu_vote_for_irq(sde_encoder_get_kms(drm_enc), enable);
 
 }
 
@@ -3699,6 +3692,31 @@ void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
 	sde_rm_release(&sde_kms->rm, drm_enc, false);
 }
 
+static void sde_encoder_wait_for_vsync_event_complete(struct sde_encoder_virt *sde_enc)
+{
+	u32 timeout_ms = DEFAULT_KICKOFF_TIMEOUT_MS;
+	int i, ret;
+
+	if (sde_enc->cur_master)
+		timeout_ms = sde_enc->cur_master->kickoff_timeout_ms;
+
+	ret = wait_event_timeout(sde_enc->vsync_event_wq,
+			!sde_enc->vblank_enabled,
+			msecs_to_jiffies(timeout_ms));
+	SDE_EVT32(timeout_ms, ret);
+
+	if (!ret) {
+		SDE_ERROR("vsync event complete timed out %d\n", ret);
+		SDE_EVT32(ret, SDE_EVTLOG_ERROR);
+		for (i = 0; i < sde_enc->num_phys_encs; i++) {
+			struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
+
+			if (phys && phys->ops.control_vblank_irq)
+				phys->ops.control_vblank_irq(phys, false);
+		}
+	}
+}
+
 static void _sde_encoder_helper_virt_disable(struct drm_encoder *drm_enc)
 {
 	int i;
@@ -3728,8 +3746,6 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 	struct sde_kms *sde_kms;
 	struct sde_connector_state *c_state = NULL;
 	enum sde_intf_mode intf_mode;
-	struct drm_crtc *drm_crtc;
-	struct msm_drm_private *priv;
 	int ret, i = 0;
 
 	if (!drm_enc) {
@@ -3767,9 +3783,6 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 	}
 
 	intf_mode = sde_encoder_get_intf_mode(drm_enc);
-
-	drm_crtc = drm_enc->crtc;
-	priv = drm_crtc->dev->dev_private;
 
 	SDE_EVT32(DRMID(drm_enc));
 
@@ -3815,12 +3828,11 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 
 	/*
 	 * wait for any pending vsync timestamp event to sf
-	 * to ensure vblank irq is disabled.
+	 * to ensure vbalnk irq is disabled.
 	 */
-	if (drm_crtc && sde_enc->vblank_enabled) {
-		drm_crtc_vblank_off(drm_crtc);
-		kthread_flush_worker(&priv->event_thread[drm_crtc->index].worker);
-	}
+	if (sde_enc->vblank_enabled &&
+			!msm_is_mode_seamless_poms(&c_state->msm_mode))
+		sde_encoder_wait_for_vsync_event_complete(sde_enc);
 
 	/*
 	 * disable dce after the transfer is complete (for command mode)
@@ -4172,6 +4184,9 @@ void sde_encoder_register_vblank_callback(struct drm_encoder *drm_enc,
 			phys->ops.control_vblank_irq(phys, enable);
 	}
 	sde_enc->vblank_enabled = enable;
+
+	if (!enable)
+		wake_up_all(&sde_enc->vsync_event_wq);
 }
 
 void sde_encoder_register_frame_event_callback(struct drm_encoder *drm_enc,
@@ -6024,38 +6039,6 @@ static int sde_encoder_virt_add_phys_encs(
 	return 0;
 }
 
-/**
- * sde_encoder_get_clones - Calculate the possible_clones for SDE encoder
- * @sde_enc:        DRM encoder pointer
- * Returns:         possible_clones mask
- */
-uint32_t sde_encoder_get_clones(struct drm_encoder *drm_enc)
-{
-	struct drm_encoder *curr;
-	int type = drm_enc->encoder_type;
-	uint32_t clone_mask = drm_encoder_mask(drm_enc);
-
-	/*
-	 * Set writeback as possible clones of real-time DSI encoders and vice
-	 * versa
-	 *
-	 * Writeback encoders can't be clones of each other and DSI
-	 * encoders can't be clones of each other.
-	 *
-	 * TODO: Add DP encoders as valid possible clones for writeback encoders
-	 * (and vice versa) once concurrent writeback has been validated for DP
-	 */
-	drm_for_each_encoder(curr, drm_enc->dev) {
-		if ((type == DRM_MODE_ENCODER_VIRTUAL &&
-				curr->encoder_type != DRM_MODE_ENCODER_VIRTUAL) ||
-				(type != DRM_MODE_ENCODER_VIRTUAL &&
-				curr->encoder_type == DRM_MODE_ENCODER_VIRTUAL))
-			clone_mask |= drm_encoder_mask(curr);
-	}
-
-	return clone_mask;
-}
-
 static int sde_encoder_virt_add_phys_enc_wb(struct sde_encoder_virt *sde_enc,
 		struct sde_enc_phys_init_params *params)
 {
@@ -6314,6 +6297,7 @@ struct drm_encoder *sde_encoder_init(struct drm_device *dev, struct msm_display_
 		sde_enc->frame_trigger_mode = FRAME_DONE_WAIT_POSTED_START;
 
 	mutex_init(&sde_enc->rc_lock);
+	init_waitqueue_head(&sde_enc->vsync_event_wq);
 	kthread_init_delayed_work(&sde_enc->delayed_off_work,
 			sde_encoder_off_work);
 	sde_enc->vblank_enabled = false;

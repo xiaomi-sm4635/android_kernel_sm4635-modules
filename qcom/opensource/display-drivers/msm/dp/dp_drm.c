@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -391,7 +391,7 @@ int dp_connector_set_colorspace(struct drm_connector *connector,
 
 int dp_connector_post_init(struct drm_connector *connector, void *display)
 {
-	int rc = 0;
+	int rc;
 	struct dp_display *dp_display = display;
 	struct sde_connector *sde_conn;
 
@@ -401,17 +401,13 @@ int dp_connector_post_init(struct drm_connector *connector, void *display)
 	dp_display->base_connector = connector;
 	dp_display->bridge->connector = connector;
 
-	sde_conn = to_sde_connector(connector);
-
-	if (sde_conn->capabilities & BIT(8))
-		goto end;
-
 	if (dp_display->post_init) {
 		rc = dp_display->post_init(dp_display);
 		if (rc)
 			goto end;
 	}
 
+	sde_conn = to_sde_connector(connector);
 	dp_display->bridge->dp_panel = sde_conn->drv_panel;
 
 	rc = dp_mst_init(dp_display);
@@ -438,8 +434,7 @@ int dp_connector_get_mode_info(struct drm_connector *connector,
 	struct dp_display *dp_disp = display;
 	struct msm_drm_private *priv;
 	struct msm_resource_caps_info avail_dp_res;
-	int rc = 0, active_stream_count;
-	bool mst_cap = false;
+	int rc = 0;
 
 	if (!drm_mode || !mode_info || !avail_res ||
 			!avail_res->max_mixer_width || !connector || !display ||
@@ -469,27 +464,6 @@ int dp_connector_get_mode_info(struct drm_connector *connector,
 		DP_ERR("error getting mixer count. rc:%d\n", rc);
 		return rc;
 	}
-
-	mst_cap = dp_panel->read_mst_cap(dp_panel);
-	active_stream_count = dp_disp->get_active_stream_count(dp_disp);
-
-	if (mst_cap && dp_disp->dp_mst_lm_merge_enable && avail_res->num_lm) {
-		if (avail_res->num_lm == 1) {
-			/* if only 1 lm is available, assign it */
-			topology->num_lm = 1;
-		} else {
-			if (active_stream_count) {
-				/* no streams left, assign from available lm */
-				topology->num_lm = min(topology->num_lm,
-							avail_res->num_lm);
-			} else {
-				/* keep at least 1 lm for second stream, assign from rest */
-				topology->num_lm = min(topology->num_lm,
-							avail_res->num_lm - 1);
-			}
-		}
-	}
-
 	/* reset dp connector lm_mask for every connection event and
 	 * this will get re-populated in resource manager based on
 	 * resolution and topology of dp display.
@@ -663,18 +637,6 @@ int dp_connector_get_modes(struct drm_connector *connector,
 	kfree(dp_mode);
 
 	return rc;
-}
-
-int dp_connector_set_info_blob(struct drm_connector *connector,
-		void *info, void *display, struct msm_mode_info *mode_info)
-{
-	struct dp_display *dp_display = display;
-	const char *display_type = NULL;
-
-	dp_display->get_display_type(dp_display, &display_type);
-	sde_kms_info_add_keystr(info, "display type", display_type);
-
-	return 0;
 }
 
 int dp_drm_bridge_init(void *data, struct drm_encoder *encoder,

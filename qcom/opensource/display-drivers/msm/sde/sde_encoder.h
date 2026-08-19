@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -224,6 +224,7 @@ enum sde_sim_qsync_event {
  * @ctl_done_supported          boolean flag to indicate the availability of
  *                              ctl done irq support for the hardware
  * @dynamic_irqs_config         bitmask config to enable encoder dynamic irqs
+ * @vsync_event_wq              Queue to wait for the vsync event complete
  */
 struct sde_encoder_virt {
 	struct drm_encoder base;
@@ -297,6 +298,7 @@ struct sde_encoder_virt {
 	bool ctl_done_supported;
 
 	unsigned long dynamic_irqs_config;
+	wait_queue_head_t vsync_event_wq;
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)
@@ -486,8 +488,6 @@ bool sde_encoder_is_dsc_merge(struct drm_encoder *drm_enc);
  * @Return: true if it is cmd mode
  */
 bool sde_encoder_check_curr_mode(struct drm_encoder *drm_enc, u32 mode);
-
-uint32_t sde_encoder_get_clones(struct drm_encoder *drm_enc);
 
 /**
  * sde_encoder_init - initialize virtual encoder object

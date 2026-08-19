@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -24,6 +24,15 @@
 #include "sde_dbg.h"
 #include "dsi_parser.h"
 
+/* LQ.LCM - 2024.5.27 - transplant mi disp from zeus start */
+#include "mi_disp_feature.h"
+#include "mi_dsi_display.h"
+#include "mi_disp_print.h"
+#include "mi_disp_lhbm.h"
+#include "mi_panel_id.h"
+#include "mi_dsi_panel_count.h"
+/* 2024.5.27 - end modify */
+
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 #define INT_BASE_10 10
 
@@ -39,6 +48,8 @@
 
 #define SEC_PANEL_NAME_MAX_LEN  256
 
+char lockdown_info[128];
+char whitepoint_info_s[128];
 u8 dbgfs_tx_cmd_buf[SZ_4K];
 static char dsi_display_primary[MAX_CMDLINE_PARAM_LEN];
 static char dsi_display_secondary[MAX_CMDLINE_PARAM_LEN];
@@ -53,6 +64,45 @@ static const struct of_device_id dsi_display_dt_match[] = {
 	{.compatible = "qcom,dsi-display"},
 	{}
 };
+
+/* LQ.LCM - 2024.5.27 - transplant mi disp from zeus start */
+char *mi_dsi_display_get_cmdline_panel_info(struct dsi_display *display)
+{
+	char *buffer = NULL, *buffer_dup = NULL;
+	char *pname = NULL;
+	char *panel_info = NULL;
+	int index = DSI_PRIMARY;
+	if (!display) {
+		DISP_ERROR("Invalid params\n");
+		return NULL;
+	}
+	if (!strcmp(display->display_type, "primary")) {
+		index = DSI_PRIMARY;
+	} else if (!strcmp(display->display_type, "secondary")) {
+		index = DSI_SECONDARY;
+	} else {
+		DISP_ERROR("Invalid display_type params\n");
+		return NULL;
+	}
+	buffer = kstrdup(boot_displays[index].boot_param, GFP_KERNEL);
+	if (!buffer)
+		return NULL;
+	buffer_dup = buffer;
+	buffer = strrchr(buffer, ',');
+	if (buffer && *buffer) {
+		pname = ++buffer;
+	} else {
+		goto exit;
+	}
+	buffer = strrchr(pname, ':');
+	if (buffer)
+		*buffer = '\0';
+	panel_info = kstrdup(pname, GFP_KERNEL);
+exit:
+	kfree(buffer_dup);
+	return panel_info;
+}
+/* 2024.5.27 - end modify */
 
 bool is_skip_op_required(struct dsi_display *display)
 {
@@ -1036,7 +1086,7 @@ release_panel_lock:
 	return rc;
 }
 
-static int dsi_display_ctrl_get_host_init_state(struct dsi_display *dsi_display,
+int dsi_display_ctrl_get_host_init_state(struct dsi_display *dsi_display,
 		bool *state)
 {
 	struct dsi_display_ctrl *ctrl;
@@ -1055,7 +1105,7 @@ static int dsi_display_ctrl_get_host_init_state(struct dsi_display *dsi_display,
 	return rc;
 }
 
-static int dsi_display_cmd_rx(struct dsi_display *display,
+int dsi_display_cmd_rx(struct dsi_display *display,
 			      struct dsi_cmd_desc *cmd)
 {
 	struct dsi_display_ctrl *m_ctrl = NULL;
@@ -2591,7 +2641,7 @@ static void dsi_display_parse_cmdline_topology(struct dsi_display *display,
 	char *sw_te = NULL;
 	unsigned long cmdline_topology = NO_OVERRIDE;
 	unsigned long cmdline_timing = NO_OVERRIDE;
-
+	DSI_INFO("%s: entry\n", __func__);
 	if (display_type >= MAX_DSI_ACTIVE_DISPLAY) {
 		DSI_ERR("display_type=%d not supported\n", display_type);
 		goto end;
@@ -2624,7 +2674,7 @@ static void dsi_display_parse_cmdline_topology(struct dsi_display *display,
 			goto end;
 		}
 	}
-	DSI_DEBUG("successfully parsed command line topology and timing\n");
+	DSI_INFO("%s: successfully parsed command line topology and timing \n", __func__);
 end:
 	display->cmdline_topology = cmdline_topology;
 	display->cmdline_timing = cmdline_timing;
@@ -2640,7 +2690,7 @@ static int dsi_display_parse_boot_display_selection(void)
 	char *pos = NULL;
 	char disp_buf[MAX_CMDLINE_PARAM_LEN] = {'\0'};
 	int i, j;
-
+	DSI_INFO("%s: entry \n", __func__);
 	for (i = 0; i < MAX_DSI_ACTIVE_DISPLAY; i++) {
 		strlcpy(disp_buf, boot_displays[i].boot_param,
 			MAX_CMDLINE_PARAM_LEN);
@@ -2660,7 +2710,7 @@ static int dsi_display_parse_boot_display_selection(void)
 
 		boot_displays[i].boot_disp_en = true;
 	}
-
+	DSI_INFO("%s: end \n", __func__);
 	return 0;
 }
 
@@ -2669,7 +2719,7 @@ static int dsi_display_phy_power_on(struct dsi_display *display)
 	int rc = 0;
 	int i;
 	struct dsi_display_ctrl *ctrl;
-
+	DSI_INFO("%s: entry \n", __func__);
 	/* Sequence does not matter for split dsi usecases */
 	display_for_each_ctrl(i, display) {
 		ctrl = &display->ctrl[i];
@@ -2683,7 +2733,7 @@ static int dsi_display_phy_power_on(struct dsi_display *display)
 			goto error;
 		}
 	}
-
+	DSI_INFO("%s: end \n", __func__);
 	return rc;
 error:
 	for (i = i - 1; i >= 0; i--) {
@@ -2700,7 +2750,7 @@ static int dsi_display_phy_power_off(struct dsi_display *display)
 	int rc = 0;
 	int i;
 	struct dsi_display_ctrl *ctrl;
-
+	DSI_INFO("%s: entry \n", __func__);
 	/* Sequence does not matter for split dsi usecases */
 	display_for_each_ctrl(i, display) {
 		ctrl = &display->ctrl[i];
@@ -2715,6 +2765,7 @@ static int dsi_display_phy_power_off(struct dsi_display *display)
 		}
 	}
 error:
+	DSI_INFO("%s: end \n", __func__);
 	return rc;
 }
 
@@ -3449,17 +3500,6 @@ int dsi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *cmd)
 	}
 
 	dsi_display_set_cmd_tx_ctrl_flags(display, cmd);
-
-	/*
-	 * Wait until any previous broadcast commands with ASYNC waits have been scheduled
-	 * and completed on both controllers.
-	 */
-	display_for_each_ctrl(i, display) {
-		ctrl = &display->ctrl[i];
-		if ((ctrl->ctrl->pending_cmd_flags & DSI_CTRL_CMD_BROADCAST) &&
-			ctrl->ctrl->post_tx_queued)
-			dsi_ctrl_flush_cmd_dma_queue(ctrl->ctrl);
-	}
 
 	if (cmd->ctrl_flags & DSI_CTRL_CMD_BROADCAST) {
 		rc = dsi_display_broadcast_cmd(display, cmd);
@@ -5432,22 +5472,6 @@ int dsi_display_cont_splash_config(void *dsi_display)
 
 	display->is_cont_splash_enabled = true;
 
-	/*
-	 * Vote on panel regulator is added to make sure panel regulators are ON
-	 * for cont-splash enabled usecase in case of hibernate exit.
-	 */
-	if (display->is_hibernate_splash_enabled) {
-		display->is_hibernate_exit = true;
-		rc = dsi_pwr_enable_regulator(&display->panel->power_info, true);
-		if (rc)
-			DSI_ERR("[%s] failed to disable vregs, rc=%d\n",
-					display->panel->name, rc);
-
-	}
-
-	if (!display->is_hibernate_splash_enabled)
-		display->is_hibernate_splash_enabled = true;
-
 	/* Update splash status for clock manager */
 	dsi_display_clk_mngr_update_splash_status(display->clk_mngr,
 				display->is_cont_splash_enabled);
@@ -5893,7 +5917,15 @@ static int dsi_display_bind(struct device *dev,
 
 
 	msm_register_vm_event(master, dev, &vm_event_ops, (void *)display);
-
+/* LQ.LCM - 2024.5.27 - build mi disp file system when kernel bind panel */
+	rc = mi_disp_feature_attach_display(display,
+			mi_get_disp_id(display->display_type), MI_INTF_DSI);
+	if (rc) {
+		DISP_ERROR("failed to attach %s display(%s intf)\n",
+			get_disp_id_name(mi_get_disp_id(display->display_type)),
+			get_disp_intf_type_name(MI_INTF_DSI));
+	}
+/* 2024.5.27 - end modify */
 	goto error;
 
 error_host_deinit:
@@ -6180,10 +6212,6 @@ int dsi_display_dev_remove(struct platform_device *pdev)
 	}
 
 	display = platform_get_drvdata(pdev);
-	if (!display || !display->panel_node) {
-		DSI_ERR("invalid display\n");
-		return -EINVAL;
-	}
 
 	/* decrement ref count */
 	of_node_put(display->panel_node);
@@ -8366,12 +8394,6 @@ int dsi_display_prepare(struct dsi_display *display)
 	if (!display->trusted_vm_env)
 		dsi_display_ctrl_isr_configure(display, true);
 
-	/* Unset DMS flag in case of hibernate exit */
-	if (display->is_hibernate_exit) {
-		mode->dsi_mode_flags &= ~DSI_MODE_FLAG_DMS;
-		display->is_hibernate_exit = false;
-	}
-
 	if (mode->dsi_mode_flags & DSI_MODE_FLAG_DMS) {
 		if (display->is_cont_splash_enabled &&
 		    display->config.panel_mode == DSI_OP_VIDEO_MODE) {
@@ -9280,3 +9302,8 @@ module_param_string(dsi_display1, dsi_display_secondary, MAX_CMDLINE_PARAM_LEN,
 								0600);
 MODULE_PARM_DESC(dsi_display1,
 	"msm_drm.dsi_display1=<display node>:<configX> where <display node> is 'secondary dsi display node name' and <configX> where x represents index in the topology list");
+module_param_string(lockdown, lockdown_info, MAX_CMDLINE_PARAM_LEN, 0600);
+MODULE_PARM_DESC(lockdown, "lockdown");
+
+module_param_string(whitepoint, whitepoint_info_s, MAX_CMDLINE_PARAM_LEN, 0600);
+MODULE_PARM_DESC(whitepoint, "whitepoint");
