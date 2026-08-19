@@ -135,6 +135,8 @@ struct ath_pktlog_info_lnx {
 
 #define PL_INFO_LNX(_pl_info)   ((struct ath_pktlog_info_lnx *)(_pl_info))
 
+extern struct ol_pktlog_dev_t ol_pl_dev;
+
 /*
  * WDI related data and functions
  * Callback function to the WDI events

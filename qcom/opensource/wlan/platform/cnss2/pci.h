@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CNSS_PCI_H
@@ -43,14 +43,6 @@
 #define CNSS_MHI_IN_MISSION_MODE(ee) (ee == MHI_EE_AMSS || \
 				      ee == MHI_EE_WFW || \
 				      ee == MHI_EE_FP)
-
-#define PCI_DSP_LINK_ENABLE                     1
-#define PCI_DSP_LINK_DISABLE                    0
-#ifdef CONFIG_PCIE_SWITCH_SUPPORT
-#define DSP_LINK_ENABLE_DELAY_TIME_US_MIN       (25000)
-#define DSP_LINK_ENABLE_DELAY_TIME_US_MAX       (25100)
-#define DSP_LINK_ENABLE_RETRY_COUNT_MAX         (3)
-#endif
 
 enum cnss_mhi_state {
 	CNSS_MHI_INIT,
@@ -193,9 +185,6 @@ struct cnss_pci_data {
 	bool drv_supported;
 	bool is_smmu_fault;
 	unsigned long long smmu_fault_timestamp[SMMU_CB_MAX];
-#ifdef CONFIG_PCIE_SWITCH_SUPPORT
-	bool pci_dsp_link_status;
-#endif
 };
 
 static inline void cnss_set_pci_priv(struct pci_dev *pci_dev, void *data)
@@ -259,7 +248,6 @@ static inline int cnss_pci_get_drv_connected(void *bus_priv)
 
 void cnss_mhi_controller_set_base(struct cnss_pci_data *pci_priv,
 				  phys_addr_t base);
-int cnss_pci_recover_link_post_sol(struct cnss_pci_data *pci_priv);
 int cnss_pci_check_link_status(struct cnss_pci_data *pci_priv);
 int cnss_suspend_pci_link(struct cnss_pci_data *pci_priv);
 int cnss_resume_pci_link(struct cnss_pci_data *pci_priv);
@@ -269,7 +257,6 @@ void cnss_pci_deinit(struct cnss_plat_data *plat_priv);
 void cnss_pci_add_fw_prefix_name(struct cnss_pci_data *pci_priv,
 				 char *prefix_name, char *name);
 int cnss_pci_alloc_fw_mem(struct cnss_pci_data *pci_priv);
-void cnss_pci_free_fw_mem(struct cnss_pci_data *pci_priv, int k);
 int cnss_pci_alloc_qdss_mem(struct cnss_pci_data *pci_priv);
 void cnss_pci_free_qdss_mem(struct cnss_pci_data *pci_priv);
 int cnss_pci_load_tme_patch(struct cnss_pci_data *pci_priv);

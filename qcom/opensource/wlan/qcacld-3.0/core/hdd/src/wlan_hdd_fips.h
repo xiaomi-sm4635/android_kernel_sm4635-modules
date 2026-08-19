@@ -57,7 +57,7 @@ struct iw_fips_test_response {
  * @extra: extra payload for wireless extensions ioctl
  *
  * This API implements the FIPS test interface. Upon entry the @extra
- * buffer will contain a FIPS test vector formatted as a &struct
+ * buffer will contain a FIPS test vector formated as a &struct
  * iw_fips_test_request. This vector will be sent to firmware where it
  * will be run through the appropriate hardware. The result of the
  * operation will be sent back to userspace via @extra encoded as a

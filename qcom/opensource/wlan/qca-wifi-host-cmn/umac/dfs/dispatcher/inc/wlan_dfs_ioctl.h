@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2011, 2016-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2010, Atheros Communications Inc.
  * All Rights Reserved.
  *
@@ -169,7 +169,6 @@ enum dfs_bangradar_types {
  * @is_chirp:       Chirp radar or not.
  * @freq_offset:    Frequency offset at which radar was found.
  * @detector_id:    Detector ID corresponding to primary/agile detectors.
- * @is_fh_radar:    Frequency Hopping Radar type or not.
  */
 struct dfs_bangradar_params {
 	enum dfs_bangradar_types bangradar_type;
@@ -177,7 +176,6 @@ struct dfs_bangradar_params {
 	uint8_t is_chirp;
 	int32_t freq_offset;
 	uint8_t detector_id;
-	uint8_t is_fh_radar;
 };
 #define DFS_IOCTL_PARAM_NOVAL  65535
 #define DFS_IOCTL_PARAM_ENABLE 0x8000
@@ -207,7 +205,7 @@ struct dfs_bangradar_params {
 /* Flag to enable Reduced BW Agile DFS */
 #define DFS_RANDOM_CH_FLAG_ENABLE_REDUCED_BW    0x0080 /* 0000 0000 1000 0000 */
 
-/* Flag to exclude Japan W53 channels */
+/* Flag to exclude Japan W53 channnels */
 #define DFS_RANDOM_CH_FLAG_NO_JAPAN_W53_CH      0x0100 /* 0000 0001 0000 0000 */
 
 /* Restricted 80P80 MHz is enabled */
@@ -309,7 +307,7 @@ enum WLAN_DFS_EVENTS {
 };
 
 #if defined(WLAN_DFS_PARTIAL_OFFLOAD) && defined(WLAN_DFS_SYNTHETIC_RADAR)
-/*
+/**
  * Structure of Pulse to be injected into the DFS Module
  * ******************************************************
  * Header
@@ -377,7 +375,7 @@ struct seq_store {
 /**
  * enum dfs_agile_sm_evt - DFS Agile SM events.
  * @DFS_AGILE_SM_EV_AGILE_START: Event to start AGILE PreCAC/RCAC.
- * @DFS_AGILE_SM_EV_AGILE_STOP:  Event to stop AGILE PreCAC/RCAC..
+ * @DFS_AGILE_SM_EV_AGILE_DOWN:  Event to stop AGILE PreCAC/RCAC..
  * @DFS_AGILE_SM_EV_AGILE_DONE:  Event to complete AGILE PreCAC/RCAC..
  * @DFS_AGILE_SM_EV_ADFS_RADAR: Event to restart AGILE PreCAC/RCAC after radar.
  */

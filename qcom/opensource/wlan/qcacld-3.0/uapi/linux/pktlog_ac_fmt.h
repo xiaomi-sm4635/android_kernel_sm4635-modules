@@ -94,14 +94,12 @@ struct ath_pktlog_hdr {
 
 /**
  * enum - Pktlog flag field details
- * @PKTLOG_FLG_FRM_TYPE_LOCAL_S: local-generated frame (tx)
- * @PKTLOG_FLG_FRM_TYPE_REMOTE_S: remote-generated frame (rx)
- * @PKTLOG_FLG_FRM_TYPE_CLONE_S: cloned frame
- * @PKTLOG_FLG_FRM_TYPE_CBF_S: CBF remote frame
- * @PKTLOG_FLG_FRM_TYPE_UNKNOWN_S: Unknown
- *
- * struct ath_pktlog_hdr flags field bit definitions,
- * (use 1 << [enum] to assign)
+ * packet origin [1:0]
+ * 00 - Local
+ * 01 - Remote
+ * 10 - Unknown/Not applicable
+ * 11 - Reserved
+ * reserved [15:2]
  */
 enum {
 	PKTLOG_FLG_FRM_TYPE_LOCAL_S = 0,

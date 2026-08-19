@@ -19,7 +19,6 @@
 #include "debug.h"
 #include "bus.h"
 #include <linux/soc/qcom/qcom_aoss.h>
-#include "pci_platform.h"
 
 #if IS_ENABLED(CONFIG_ARCH_QCOM)
 static struct cnss_vreg_cfg cnss_vreg_list[] = {
@@ -86,6 +85,7 @@ static struct cnss_clk_cfg cnss_clk_list[] = {
 #define MAX_TCS_NUM			8
 #define MAX_TCS_CMD_NUM			5
 #define BT_CXMX_VOLTAGE_MV		950
+#define CNSS_MBOX_MSG_MAX_LEN 64
 #define CNSS_MBOX_TIMEOUT_MS 1000
 /* Platform HW config */
 #define CNSS_PMIC_VOLTAGE_STEP 4
@@ -475,9 +475,6 @@ static int cnss_vreg_unvote(struct cnss_plat_data *plat_priv,
 			    struct list_head *vreg_list)
 {
 	struct cnss_vreg_info *vreg;
-
-	if (plat_priv->is_fw_managed_pwr)
-		return 0;
 
 	list_for_each_entry_reverse(vreg, vreg_list, list) {
 		if (IS_ERR_OR_NULL(vreg->reg))
@@ -1011,8 +1008,8 @@ retry_gpio_req:
 	gpio_free(xo_clk_gpio);
 }
 
-int cnss_select_pinctrl_state(struct cnss_plat_data *plat_priv,
-			      bool state)
+static int cnss_select_pinctrl_state(struct cnss_plat_data *plat_priv,
+				     bool state)
 {
 	int ret = 0;
 	struct cnss_pinctrl_info *pinctrl_info;
@@ -1108,7 +1105,7 @@ out:
  *
  * Return: Status of pinctrl select operation. 0 - Success.
  */
-int cnss_select_pinctrl_enable(struct cnss_plat_data *plat_priv)
+static int cnss_select_pinctrl_enable(struct cnss_plat_data *plat_priv)
 {
 	int ret = 0, bt_en_gpio = plat_priv->pinctrl_info.bt_en_gpio;
 	u8 wlan_en_state = 0;
@@ -1157,144 +1154,9 @@ int cnss_get_input_gpio_value(struct cnss_plat_data *plat_priv, int gpio_num)
 	return gpio_get_value(gpio_num);
 }
 
-#if IS_ENABLED(CONFIG_PCIE_QCOM_ECAM)
-enum domains_t {
-	POWER_REGULATOR = 0,
-	POWER_GPIO = 1,
-};
-
-int
-cnss_fw_managed_power_regulator(struct cnss_plat_data *plat_priv,
-				bool enabled)
-{
-	struct device *dev = plat_priv->pd_devs[POWER_REGULATOR];
-	int ret;
-
-	if (enabled)
-		ret = pm_runtime_resume_and_get(dev);
-	else
-		ret = pm_runtime_put_sync(dev);
-
-	if (ret < 0)
-		cnss_pr_err("regulator operation failed with err=%d\n", ret);
-
-	return ret;
-}
-
-int
-cnss_fw_managed_power_gpio(struct cnss_plat_data *plat_priv, bool enabled)
-{
-	struct device *dev = plat_priv->pd_devs[POWER_GPIO];
-	int ret;
-
-	if (enabled)
-		ret = pm_runtime_resume_and_get(dev);
-	else
-		ret = pm_runtime_put_sync(dev);
-
-	if (ret < 0)
-		cnss_pr_err("gpio operation failed with err=%d\n", ret);
-
-	return ret;
-}
-
-static int cnss_scmi_pm_enable(struct cnss_plat_data *plat_priv)
-{
-	int ret = 0;
-
-	ret = cnss_fw_managed_power_regulator(plat_priv, true);
-	if (ret)
-		goto out;
-
-	if (plat_priv->device_id == QCA6490_DEVICE_ID &&
-	    plat_priv->pinctrl_info.bt_en_gpio >= 0)
-		msleep(100);
-
-	ret = cnss_fw_managed_power_gpio(plat_priv, true);
-	if (ret)
-		goto scmi_reg_off;
-
-	return 0;
-
-scmi_reg_off:
-	cnss_fw_managed_power_regulator(plat_priv, false);
-out:
-	return ret;
-}
-
-int cnss_fw_managed_domain_attach(struct cnss_plat_data *plat_priv)
-{
-	struct device *dev = &plat_priv->plat_dev->dev;
-	int i;
-
-	plat_priv->pd_count = of_count_phandle_with_args(
-		dev->of_node, "power-domains", "#power-domain-cells");
-	if (plat_priv->pd_count <= 1)
-		return 0;
-
-	plat_priv->pd_devs = devm_kcalloc(dev, plat_priv->pd_count,
-					  sizeof(*plat_priv->pd_devs),
-					  GFP_KERNEL);
-	if (!plat_priv->pd_devs)
-		return -ENOMEM;
-
-	for (i = 0; i < plat_priv->pd_count; i++) {
-		plat_priv->pd_devs[i] = dev_pm_domain_attach_by_id(dev, i);
-		if (IS_ERR(plat_priv->pd_devs[i])) {
-			cnss_fw_managed_domain_detach(plat_priv);
-			return PTR_ERR(plat_priv->pd_devs[i]);
-		}
-	}
-
-	return 0;
-}
-
-void cnss_fw_managed_domain_detach(struct cnss_plat_data *plat_priv)
-{
-	int i;
-
-	if (plat_priv->pd_count <= 1)
-		return;
-
-	for (i = plat_priv->pd_count - 1; i >= 0; i--) {
-		if (!IS_ERR_OR_NULL(plat_priv->pd_devs[i]))
-			dev_pm_domain_detach(plat_priv->pd_devs[i], true);
-	}
-}
-#else
-static int cnss_scmi_pm_enable(struct cnss_plat_data *plat_priv)
-{
-	return -EOPNOTSUPP;
-}
-
-int
-cnss_fw_managed_power_gpio(struct cnss_plat_data *plat_priv, bool enabled)
-{
-	return -EOPNOTSUPP;
-}
-
-int
-cnss_fw_managed_power_regulator(struct cnss_plat_data *plat_priv,
-				bool enabled)
-{
-	return -EOPNOTSUPP;
-}
-
-int cnss_fw_managed_domain_attach(struct cnss_plat_data *plat_priv)
-{
-	return -EOPNOTSUPP;
-}
-
-void cnss_fw_managed_domain_detach(struct cnss_plat_data *plat_priv)
-{
-	return;
-}
-#endif
-
 int cnss_power_on_device(struct cnss_plat_data *plat_priv, bool reset)
 {
 	int ret = 0;
-	int dsp_link_status = -1;
 
 	if (plat_priv->powered_on) {
 		cnss_pr_dbg("Already powered up");
@@ -1307,65 +1169,42 @@ int cnss_power_on_device(struct cnss_plat_data *plat_priv, bool reset)
 		return -EINVAL;
 	}
 
-	/* For PCIe switch platform, disable DSP downstream link before power
-	 * on/off wlan device to avoid uncorrectable AER erro on DSP side.
-	 */
-	cnss_bus_set_dsp_link_status(plat_priv, true);
-	cnss_bus_dsp_link_control(plat_priv, false);
-
-	if (plat_priv->is_fw_managed_pwr) {
-		ret = cnss_scmi_pm_enable(plat_priv);
-		if (ret)
-			goto out;
-	} else {
-		ret = cnss_vreg_on_type(plat_priv, CNSS_VREG_PRIM);
-		if (ret) {
-			cnss_pr_err("Failed to turn on vreg, err = %d\n", ret);
-			goto out;
-		}
-
-		ret = cnss_clk_on(plat_priv, &plat_priv->clk_list);
-		if (ret) {
-			cnss_pr_err("Failed to turn on clocks, err = %d\n", ret);
-			goto vreg_off;
-		}
-
-#ifdef CONFIG_PULLDOWN_WLANEN
-		if (reset) {
-			/* The default state of wlan_en maybe not low,
-			 * according to datasheet, we should put wlan_en
-			 * to low first, and trigger high.
-			 * And the default delay for qca6390 is at least 4ms,
-			 * for qcn7605/qca6174, it is 10us. For safe, set 5ms delay
-			 * here.
-			 */
-			ret = cnss_select_pinctrl_state(plat_priv, false);
-			if (ret) {
-				cnss_pr_err("Failed to select pinctrl state, err = %d\n",
-					    ret);
-				goto clk_off;
-			}
-
-			usleep_range(4000, 5000);
-		}
-#endif
-
-		ret = cnss_select_pinctrl_enable(plat_priv);
-		if (ret) {
-			cnss_pr_err("Failed to select pinctrl state, err = %d\n", ret);
-			goto clk_off;
-		}
+	ret = cnss_vreg_on_type(plat_priv, CNSS_VREG_PRIM);
+	if (ret) {
+		cnss_pr_err("Failed to turn on vreg, err = %d\n", ret);
+		goto out;
 	}
 
-	/* For PCIe switch platform, wait for link train of DSP<->WLAN complete
-	 */
-	dsp_link_status = cnss_bus_get_dsp_link_status(plat_priv);
-	if (dsp_link_status == PCI_DSP_LINK_DISABLE) {
-		ret = cnss_bus_dsp_link_enable(plat_priv);
+	ret = cnss_clk_on(plat_priv, &plat_priv->clk_list);
+	if (ret) {
+		cnss_pr_err("Failed to turn on clocks, err = %d\n", ret);
+		goto vreg_off;
+	}
+
+#ifdef CONFIG_PULLDOWN_WLANEN
+	if (reset) {
+		/* The default state of wlan_en maybe not low,
+		 * according to datasheet, we should put wlan_en
+		 * to low first, and trigger high.
+		 * And the default delay for qca6390 is at least 4ms,
+		 * for qcn7605/qca6174, it is 10us. For safe, set 5ms delay
+		 * here.
+		 */
+		ret = cnss_select_pinctrl_state(plat_priv, false);
 		if (ret) {
-			cnss_pr_err("Failed to enable bus dsp link, err = %d\n", ret);
+			cnss_pr_err("Failed to select pinctrl state, err = %d\n",
+				    ret);
 			goto clk_off;
 		}
+
+		usleep_range(4000, 5000);
+	}
+#endif
+
+	ret = cnss_select_pinctrl_enable(plat_priv);
+	if (ret) {
+		cnss_pr_err("Failed to select pinctrl state, err = %d\n", ret);
+		goto clk_off;
 	}
 
 	plat_priv->powered_on = true;
@@ -1390,19 +1229,12 @@ void cnss_power_off_device(struct cnss_plat_data *plat_priv)
 		return;
 	}
 
-	cnss_bus_dsp_link_control(plat_priv, false);
 	set_bit(CNSS_POWER_OFF, &plat_priv->driver_state);
 	cnss_bus_shutdown_cleanup(plat_priv);
 	cnss_disable_dev_sol_irq(plat_priv);
-	if (plat_priv->is_fw_managed_pwr) {
-		cnss_fw_managed_power_gpio(plat_priv, false);
-		cnss_fw_managed_power_regulator(plat_priv, false);
-
-	} else {
-		cnss_select_pinctrl_state(plat_priv, false);
-		cnss_clk_off(plat_priv, &plat_priv->clk_list);
-		cnss_vreg_off_type(plat_priv, CNSS_VREG_PRIM);
-	}
+	cnss_select_pinctrl_state(plat_priv, false);
+	cnss_clk_off(plat_priv, &plat_priv->clk_list);
+	cnss_vreg_off_type(plat_priv, CNSS_VREG_PRIM);
 	plat_priv->powered_on = false;
 }
 
@@ -1583,28 +1415,17 @@ static int
 cnss_mbox_send_msg(struct cnss_plat_data *plat_priv, char *mbox_msg)
 {
 	struct qmp_pkt pkt;
-	int mbox_msg_size;
 	int ret = 0;
 
 	if (!plat_priv->mbox_chan)
 		return -ENODEV;
 
-	/* 4 bytes aligment is MUST */
-	mbox_msg_size = ((strlen(mbox_msg) + 1) + 0x3) & ~0x3;
-
-	if (mbox_msg_size > CNSS_MBOX_MSG_MAX_LEN) {
-		cnss_pr_err("message length greater than max length\n");
-		return -EINVAL;
-	}
-
 	cnss_pr_dbg("Sending AOP Mbox msg: %s\n", mbox_msg);
-	pkt.size = mbox_msg_size;
+	pkt.size = CNSS_MBOX_MSG_MAX_LEN;
 	pkt.data = mbox_msg;
 	ret = mbox_send_message(plat_priv->mbox_chan, &pkt);
 	if (ret < 0)
 		cnss_pr_err("Failed to send AOP mbox msg: %s\n", mbox_msg);
-	else
-		ret = 0;
 
 	return ret;
 }
@@ -1769,7 +1590,7 @@ static inline bool cnss_aop_interface_ready(struct cnss_plat_data *plat_priv)
 int cnss_aop_pdc_reconfig(struct cnss_plat_data *plat_priv)
 {
 	u32 i;
-	int ret = 0;
+	int ret;
 
 	if (plat_priv->pdc_init_table_len <= 0 || !plat_priv->pdc_init_table)
 		return 0;
@@ -1777,15 +1598,8 @@ int cnss_aop_pdc_reconfig(struct cnss_plat_data *plat_priv)
 	cnss_pr_dbg("Setting PDC defaults for device ID: %d\n",
 		    plat_priv->device_id);
 	for (i = 0; i < plat_priv->pdc_init_table_len; i++) {
-		char buf[CNSS_MBOX_MSG_MAX_LEN] = {0x00};
-
-		if (strlen(plat_priv->pdc_init_table[i]) > CNSS_MBOX_MSG_MAX_LEN) {
-			cnss_pr_err("msg too long: %s\n", plat_priv->pdc_init_table[i]);
-			continue;
-		}
-
-		snprintf(buf, CNSS_MBOX_MSG_MAX_LEN, plat_priv->pdc_init_table[i]);
-		ret = cnss_aop_send_msg(plat_priv, buf);
+		ret = cnss_aop_send_msg(plat_priv,
+					(char *)plat_priv->pdc_init_table[i]);
 		if (ret < 0)
 			break;
 	}
@@ -2209,8 +2023,7 @@ int cnss_dev_specific_power_on(struct cnss_plat_data *plat_priv)
 {
 	int ret;
 
-	if (plat_priv->dt_type != CNSS_DTT_MULTIEXCHG ||
-	    plat_priv->is_fw_managed_pwr)
+	if (plat_priv->dt_type != CNSS_DTT_MULTIEXCHG)
 		return 0;
 
 	ret = cnss_get_vreg_type(plat_priv, CNSS_VREG_PRIM);

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/clk.h>
 #include <linux/delay.h>
@@ -41,11 +41,10 @@ static struct icnss_battery_level icnss_battery_level[] = {
 };
 
 static struct icnss_vreg_cfg icnss_wcn6450_vreg_list[] = {
-	{"vdd-aon", 920000, 1040000, 0, 0, 0, false, true},
-	{"vdd-1.8-rfa", 1856000, 1908000, 0, 0, 0, false, true},
-	{"vdd-1.2-rfa", 1256000, 1408000, 0, 0, 0, false, true},
-	{"vdd-cx", 620000, 2200000, 0, 0, 0, false, true},
-	{"vdd-1.8-io", 1800000, 1800000, 0, 0, 0, false, true},
+	{"vdd-cx-mx", 824000, 952000, 0, 0, 0, false, true},
+	{"vdd-1.8-xo", 1872000, 1872000, 0, 0, 0, false, true},
+	{"vdd-1.3-rfa", 1256000, 1352000, 0, 0, 0, false, true},
+	{"vdd-aon", 1256000, 1352000, 0, 0, 0, false, true},
 };
 
 static struct icnss_clk_cfg icnss_clk_list[] = {
@@ -327,7 +326,7 @@ static struct icnss_vreg_cfg *get_vreg_list(u32 *vreg_list_size,
 		return icnss_wcn6450_vreg_list;
 
 	default:
-		icnss_pr_err("Unsupported device_id 0x%lx\n", device_id);
+		icnss_pr_err("Unsupported device_id 0x%x\n", device_id);
 		*vreg_list_size = 0;
 		return NULL;
 	}
@@ -437,8 +436,8 @@ int icnss_vreg_unvote(struct icnss_priv *priv)
 	return 0;
 }
 
-static int icnss_get_clk_single(struct icnss_priv *priv,
-				struct icnss_clk_info *clk_info)
+int icnss_get_clk_single(struct icnss_priv *priv,
+			 struct icnss_clk_info *clk_info)
 {
 	struct device *dev = &priv->pdev->dev;
 	struct clk *clk;
@@ -887,7 +886,7 @@ int icnss_aop_pdc_reconfig(struct icnss_priv *priv)
 	if (priv->pdc_init_table_len <= 0 || !priv->pdc_init_table)
 		return 0;
 
-	icnss_pr_dbg("Setting PDC defaults for device ID: (0x%lx)\n",
+	icnss_pr_dbg("Setting PDC defaults for device ID: (0x%x)\n",
 		     priv->device_id);
 	for (i = 0; i < priv->pdc_init_table_len; i++) {
 		mbox_msg = (char *)priv->pdc_init_table[i];
@@ -983,13 +982,8 @@ int icnss_update_cpr_info(struct icnss_priv *priv)
 		return -EINVAL;
 	}
 
-	/*For WCN6450, WLAN_CX is a dedicated rail for WLAN and there is a seperate rail
-	 * for BT_CX.
-	 * Hence, there is no need to modifying it with BT_CXMX_VOLTAGE
-	 */
-	if (priv->device_id != WCN6450_DEVICE_ID)
-		cpr_info->voltage = cpr_info->voltage > BT_CXMX_VOLTAGE_MV ?
-			cpr_info->voltage : BT_CXMX_VOLTAGE_MV;
+	cpr_info->voltage = cpr_info->voltage > BT_CXMX_VOLTAGE_MV ?
+		cpr_info->voltage : BT_CXMX_VOLTAGE_MV;
 
 	return icnss_aop_set_vreg_param(priv,
 				       cpr_info->vreg_ol_cpr,

@@ -260,8 +260,7 @@ struct cnss_wlan_driver {
 	int  (*suspend_noirq)(struct pci_dev *pdev);
 	int  (*resume_noirq)(struct pci_dev *pdev);
 	void (*modem_status)(struct pci_dev *pdev, int state);
-	void (*update_status)(struct pci_dev *pdev,
-			      enum cnss_driver_status status);
+	void (*update_status)(struct pci_dev *pdev, uint32_t status);
 	int  (*update_event)(struct pci_dev *pdev,
 			     struct cnss_uevent_data *uevent);
 	struct cnss_wlan_runtime_ops *runtime_ops;
@@ -341,7 +340,6 @@ enum cnss_recovery_reason {
 	CNSS_REASON_LINK_DOWN,
 	CNSS_REASON_RDDM,
 	CNSS_REASON_TIMEOUT,
-	CNSS_REASON_FW_ASSERTION_FAIL,
 };
 
 enum cnss_fw_caps {
@@ -454,7 +452,6 @@ extern int cnss_send_buffer_to_afcmem(struct device *dev, const uint8_t *afcdb,
 extern int cnss_reset_afcmem(struct device *dev, uint8_t slotid);
 extern bool cnss_get_fw_cap(struct device *dev, enum cnss_fw_caps fw_cap);
 extern bool cnss_audio_is_direct_link_supported(struct device *dev);
-extern bool cnss_ipa_wlan_shared_smmu_supported(struct device *dev);
 extern int cnss_set_wfc_mode(struct device *dev, struct cnss_wfc_cfg cfg);
 extern int cnss_thermal_cdev_register(struct device *dev,
 				      unsigned long max_state,

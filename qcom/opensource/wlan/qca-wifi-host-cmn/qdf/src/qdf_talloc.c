@@ -99,7 +99,6 @@ static qdf_spinlock_t __qdf_talloc_meta_lock;
 /**
  * struct qdf_talloc_parent_meta - parent/children metadata for memory tracking
  * @entry: entry for membership in the parent hashtable
- * @key: parent
  * @children: list of associated children
  */
 struct qdf_talloc_parent_meta {
@@ -150,7 +149,6 @@ qdf_talloc_parent_meta_lookup(const void *parent)
  * @func: name of the function that requested the allocation
  * @line: line number of the call site in @func
  * @size: size of the allocation in bytes
- * @guard: a known value, used to detect out-of-bounds access
  */
 struct qdf_talloc_child_meta {
 	const void *parent;

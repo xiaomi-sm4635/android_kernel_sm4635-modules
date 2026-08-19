@@ -1,41 +1,35 @@
 # Android makefile for the WLAN Module
+ifneq (, $(filter $(call get-component-name), miodm))
 
 # set WLAN_BUILD_DEBUG=y in your environment to enable debug logging
 define wlog
 $(if $(WLAN_BUILD_DEBUG),$(info $(1)))
 endef
 
-define target_is_dual_wlan
-$(strip \
-  $(if $(TARGET_SUPPORT_DUAL_WLAN), \
-     $(if $(findstring cnss2,$(1)),true,), \
-  ) \
-)
-endef
-
 LOCAL_MODULE_DDK_BUILD := false
 LOCAL_MODULE_DDK_ALLOW_UNSAFE_HEADERS := false
 
-ifeq ($(TARGET_BOARD_PLATFORM), sun)
-LOCAL_MODULE_DDK_BUILD := true
-LOCAL_MODULE_DDK_ALLOW_UNSAFE_HEADERS := true
-endif
-ifeq ($(TARGET_BOARD_PLATFORM), pineapple)
+ifeq ($(TARGET_BOARD_PLATFORM), blair)
 LOCAL_MODULE_DDK_BUILD := true
 LOCAL_MODULE_DDK_ALLOW_UNSAFE_HEADERS := true
 endif
 
-ifeq ($(TARGET_BOARD_PLATFORM), niobe)
+ifeq ($(TARGET_BOARD_PLATFORM), monaco)
 LOCAL_MODULE_DDK_BUILD := true
 LOCAL_MODULE_DDK_ALLOW_UNSAFE_HEADERS := true
 endif
 
-ifeq ($(TARGET_BOARD_PLATFORM), volcano)
+ifeq ($(TARGET_BOARD_PLATFORM), pitti)
 LOCAL_MODULE_DDK_BUILD := true
 LOCAL_MODULE_DDK_ALLOW_UNSAFE_HEADERS := true
 endif
 
-ifeq ($(TARGET_BOARD_PLATFORM),parrot)
+ifeq ($(TARGET_BOARD_PLATFORM), pitti_32go)
+LOCAL_MODULE_DDK_BUILD := true
+LOCAL_MODULE_DDK_ALLOW_UNSAFE_HEADERS := true
+endif
+
+ifeq ($(TARGET_BOARD_PLATFORM), parrot)
 ifeq ($(TARGET_BOARD_SUFFIX),66)
 LOCAL_MODULE_DDK_BUILD := true
 LOCAL_MODULE_DDK_ALLOW_UNSAFE_HEADERS := true
@@ -188,6 +182,7 @@ ifeq ($(TARGET_USES_KERNEL_PLATFORM),true)
 else
     include $(DLKM_DIR)/AndroidKernelModule.mk
 endif
+
 endif
 else
 $(foreach chip, $(TARGET_WLAN_CHIP), \
@@ -196,14 +191,6 @@ include $(foreach chip, $(TARGET_WLAN_CHIP), $(LOCAL_PATH)/.$(chip)/Android.mk)
 endif
 
 else # Multi-ok check
-
-# When dual wlan enabled, secondary dev name would be $(chip)_cnss2.
-# Use LOCAL_CHIP_NAME instead of LOCAL_DEV_NAME for secondary one.
-LOCAL_CHIP_NAME := $(LOCAL_DEV_NAME)
-TARGET_SECONDARY_WLAN := $(call target_is_dual_wlan,$(LOCAL_DEV_NAME))
-ifeq ($(TARGET_SECONDARY_WLAN), true)
-LOCAL_CHIP_NAME := $(patsubst %_cnss2,%,$(strip $(LOCAL_DEV_NAME)))
-endif
 
 ifeq ($(WLAN_PROFILE),)
 WLAN_PROFILE := default
@@ -223,23 +210,17 @@ else
 LOCAL_SRC_DIR := .$(LOCAL_DEV_NAME)
 # Use default profile if WLAN_CFG_USE_DEFAULT defined.
 ifeq ($(WLAN_CFG_USE_DEFAULT),)
-WLAN_PROFILE := $(LOCAL_CHIP_NAME)
+WLAN_PROFILE := $(LOCAL_DEV_NAME)
 endif
-TARGET_FW_DIR := firmware/wlan/qca_cld/$(LOCAL_CHIP_NAME)
-TARGET_CFG_PATH := /vendor/etc/wifi/$(LOCAL_CHIP_NAME)
-TARGET_MAC_BIN_PATH := /mnt/vendor/persist/$(LOCAL_CHIP_NAME)
+TARGET_FW_DIR := firmware/wlan/qca_cld/$(LOCAL_DEV_NAME)
+TARGET_CFG_PATH := /vendor/etc/wifi/$(LOCAL_DEV_NAME)
+TARGET_MAC_BIN_PATH := /mnt/vendor/persist/$(LOCAL_DEV_NAME)
 
 ifneq ($(TARGET_MULTI_WLAN), true)
 LOCAL_MOD_NAME := wlan
 DYNAMIC_SINGLE_CHIP := $(LOCAL_DEV_NAME)
 else
 LOCAL_MOD_NAME := $(LOCAL_DEV_NAME)
-endif
-
-ifeq ($(TARGET_SECONDARY_WLAN), true)
-TARGET_SECONDARY_WLAN_NUMBER := 2
-LOCAL_MOD_NAME := $(LOCAL_CHIP_NAME)_$(TARGET_SECONDARY_WLAN_NUMBER)
-DYNAMIC_SINGLE_CHIP := $(LOCAL_CHIP_NAME)
 endif
 
 endif
@@ -270,29 +251,16 @@ KBUILD_OPTIONS += DEVNAME=$(LOCAL_DEV_NAME)
 KBUILD_OPTIONS += BOARD_PLATFORM=$(TARGET_BOARD_PLATFORM)
 KBUILD_OPTIONS += $(WLAN_SELECT)
 
-KBUILD_REQUIRED_KOS := ipam.ko
-
 ifneq ($(WLAN_CFG_OVERRIDE_$(LOCAL_DEV_NAME)),)
 KBUILD_OPTIONS += WLAN_CFG_OVERRIDE="$(WLAN_CFG_OVERRIDE_$(LOCAL_DEV_NAME))"
 endif
 
-# driver expects "/dev/<name>" for wifi driver state ctrl parameter.
-# i.e. WIFI_DRIVER_STATE_CTRL_PARAM="/dev/wlan" is defined for single wlan.
-# WIFI_DRIVER_STATE_CTRL_PARAM_SECONDARY="/dev/wlan2" is defined for 2nd wlan.
-ifeq ($(TARGET_SECONDARY_WLAN), true)
-$(call wlog,STATE_CTRL_PARAM_SECONDARY=$(WIFI_DRIVER_STATE_CTRL_PARAM_SECONDARY))
-PARAM_SECONDARY := $(patsubst "%",%,$(WIFI_DRIVER_STATE_CTRL_PARAM_SECONDARY))
-$(call wlog,PARAM_SECONDARY=$(PARAM_SECONDARY))
-ifeq ($(dir $(PARAM_SECONDARY)),/dev/)
-KBUILD_OPTIONS += WLAN_CTRL_NAME=$(notdir $(PARAM_SECONDARY))
-endif
-else
+# driver expects "/dev/<name>" for WIFI_DRIVER_STATE_CTRL_PARAM
 $(call wlog,WIFI_DRIVER_STATE_CTRL_PARAM=$(WIFI_DRIVER_STATE_CTRL_PARAM))
 PARAM := $(patsubst "%",%,$(WIFI_DRIVER_STATE_CTRL_PARAM))
 $(call wlog,PARAM=$(PARAM))
 ifeq ($(dir $(PARAM)),/dev/)
 KBUILD_OPTIONS += WLAN_CTRL_NAME=$(notdir $(PARAM))
-endif
 endif
 
 # Pass build options per chip to Kbuild. This will be injected from upper layer
@@ -321,7 +289,7 @@ KBUILD_OPTIONS += $(foreach wlan_platform_kbuild_option, \
 		   $(WLAN_PLATFORM_KBUILD_OPTIONS), \
 		   $(wlan_platform_kbuild_option))
 
-KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(shell pwd)/$(call intermediates-dir-for,DLKM,wlan-platform-module-symvers)/Module.symvers
+KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS=$(shell pwd)/$(call intermediates-dir-for,DLKM,wlan-platform-module-symvers)/Module.symvers
 endif
 
 include $(CLEAR_VARS)
@@ -388,3 +356,4 @@ endif # DLKM check
 endif # supported target check
 endif # WLAN enabled check
 endif # ENABLE_QCACLD
+endif
